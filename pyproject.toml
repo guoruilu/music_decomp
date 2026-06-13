@@ -14,6 +14,9 @@ dependencies = []
 dev = [
     "pytest>=8.0",
 ]
+gui = [
+    "PySide6>=6.6",
+]
 separation = [
     "demucs>=4.0",
     "numpy>=1.23",
