@@ -2,6 +2,8 @@
 
 Date: 2026-06-13
 
+Detailed execution plan: [step-by-step-execution-plan.md](step-by-step-execution-plan.md)
+
 ## Summary
 
 - Build a Windows portable-folder GUI application. The user unzips the folder and runs the executable.
@@ -67,4 +69,3 @@ Date: 2026-06-13
 - FFmpeg devices documentation: https://ffmpeg.org/ffmpeg-devices.html
 - PyInstaller operating mode: https://pyinstaller.org/en/stable/operating-mode.html
 - SoundCard package: https://pypi.org/project/SoundCard/
-

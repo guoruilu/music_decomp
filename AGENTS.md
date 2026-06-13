@@ -11,4 +11,5 @@
 - Documentation index: [docs/INDEX.md](docs/INDEX.md)
 - Log index: [logs/INDEX.md](logs/INDEX.md)
 - Current product plan: [docs/by-feature/windows-offline-stem-separation-plan.md](docs/by-feature/windows-offline-stem-separation-plan.md)
+- Step-by-step execution plan: [docs/by-feature/step-by-step-execution-plan.md](docs/by-feature/step-by-step-execution-plan.md)
 - User requirement records: [docs/by-date/2026-06-13-user-requirements.md](docs/by-date/2026-06-13-user-requirements.md)

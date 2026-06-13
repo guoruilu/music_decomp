@@ -18,3 +18,8 @@
 AGENTS.md中加一条，每次我的需求都要原文记录到文档子目录中。完成任务后自己用git保存推送，不过在那之前先建立.gitignore文件，确保不要把不必要的文件commit。
 ```
 
+## Requirement 4
+
+```text
+现在把plan整理成一份可以step by step执行得详细方案，详细到任何一个新的agent拿到之后都可以直接执行得程度。
+```
