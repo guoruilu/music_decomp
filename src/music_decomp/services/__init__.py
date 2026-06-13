@@ -2,6 +2,7 @@
 
 from .export_service import ExportService
 from .media_service import MediaService
+from .recorder_service import RecorderService
 from .separation_service import SeparationService
 
-__all__ = ["ExportService", "MediaService", "SeparationService"]
+__all__ = ["ExportService", "MediaService", "RecorderService", "SeparationService"]

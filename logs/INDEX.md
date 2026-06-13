@@ -11,6 +11,7 @@
 - [FFmpeg media service](by-feature/media-service-ffmpeg.md)
 - [Export service output metadata](by-feature/export-service-output-metadata.md)
 - [Separation service with Demucs](by-feature/separation-service-demucs.md)
+- [Recorder service](by-feature/recorder-service.md)
 
 ## By Date
 
@@ -23,3 +24,4 @@
 - [2026-06-13 Step 3 FFmpeg media service](by-date/2026-06-13-step-3-media-service.md)
 - [2026-06-13 Step 4 export service](by-date/2026-06-13-step-4-export-service.md)
 - [2026-06-13 Step 5 separation service](by-date/2026-06-13-step-5-separation-service.md)
+- [2026-06-13 Step 6 recorder service](by-date/2026-06-13-step-6-recorder-service.md)

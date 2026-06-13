@@ -20,6 +20,9 @@ separation = [
     "torch>=2.0",
     "torchaudio>=2.0",
 ]
+recorder = [
+    "SoundCard>=0.4.6",
+]
 
 [project.scripts]
 music-decomp = "music_decomp.cli:main"
