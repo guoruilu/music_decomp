@@ -7,6 +7,7 @@
 - [Agent coordination workflow](by-feature/agent-coordination-workflow.md)
 - [Repository hygiene and git workflow](by-feature/repository-hygiene.md)
 - [Python project scaffold](by-feature/python-project-scaffold.md)
+- [Core domain types](by-feature/core-domain-types.md)
 
 ## By Date
 
@@ -16,6 +17,7 @@
 - [2026-06-13 user requirements](by-date/2026-06-13-user-requirements.md)
 - [2026-06-13 repository hygiene](by-date/2026-06-13-repository-hygiene.md)
 - [2026-06-13 Step 1 Python scaffold](by-date/2026-06-13-step-1-python-scaffold.md)
+- [2026-06-13 Step 2 core domain types](by-date/2026-06-13-step-2-core-domain-types.md)
 
 ## Requirement Records
 
