@@ -71,3 +71,9 @@ Constraints:
 
 After fixing, run `.venv/bin/python -m pytest`, `.venv/bin/python -m music_decomp --version`, and `git diff --check`. Report files changed and results.
 ```
+
+## Requirement 11
+
+```text
+继续执行
+```
