@@ -77,3 +77,27 @@ After fixing, run `.venv/bin/python -m pytest`, `.venv/bin/python -m music_decom
 ```text
 继续执行
 ```
+
+## Requirement 12
+
+```text
+继续执行
+```
+
+## Requirement 13
+
+```text
+Reviewer returned CHANGES_REQUESTED for Step 5.
+
+Required fix:
+- In src/music_decomp/services/separation_service.py, if `bass` is requested in result.output_files and Demucs/raw_stems does not include bass, fail clearly with SeparationError for the missing bass output.
+- Keep low-pass fallback only for `lowest` when bass is unavailable and `bass` itself was not requested.
+- Add a focused regression test in tests/test_synthetic_audio.py for the missing requested bass case.
+
+Constraints:
+- Do not touch docs/codex-review/.
+- Keep changes scoped to Step 5. Update docs/logs if needed to reflect reviewer feedback/fix.
+- Do not commit or push.
+
+After fixing, run `.venv/bin/python -m pytest`, `.venv/bin/python -m music_decomp --version`, and `git diff --check`. Report files changed and results.
+```
