@@ -20,7 +20,8 @@ This is the executable implementation plan for the Windows offline music stem se
    - `logs/by-feature/`
 5. Keep `AGENTS.md` short. Only add index entries or durable top-level rules.
 6. Do not commit generated audio/video, model weights, FFmpeg binaries, build artifacts, caches, virtual environments, or temporary output unless the user explicitly approves.
-7. At the end of each completed task:
+7. Every implementation step must use the subagent workflow in `docs/by-feature/agent-coordination-workflow.md`: a dedicated executor subagent performs the step, a separate reviewer subagent strictly reviews it, reviewer feedback goes back to the executor, and the loop repeats until both report no remaining issues.
+8. At the end of each completed task:
    - run relevant checks
    - update docs and logs
    - run `git status --short`
@@ -759,21 +760,22 @@ Run these checks before marking v1 complete.
 
 After each step:
 
-1. Update requirement records if the user changed or added requirements.
-2. Update the relevant `docs/by-feature/` file.
-3. Add or update a `docs/by-date/YYYY-MM-DD-*.md` entry.
-4. Update `logs/by-feature/*.md`.
-5. Add or update `logs/by-date/YYYY-MM-DD-*.md`.
-6. Run checks for the step.
-7. Inspect pending files:
+1. Run the executor/reviewer subagent loop described in `docs/by-feature/agent-coordination-workflow.md`.
+2. Update requirement records if the user changed or added requirements.
+3. Update the relevant `docs/by-feature/` file.
+4. Add or update a `docs/by-date/YYYY-MM-DD-*.md` entry.
+5. Update `logs/by-feature/*.md`.
+6. Add or update `logs/by-date/YYYY-MM-DD-*.md`.
+7. Run checks for the step.
+8. Inspect pending files:
 
 ```bash
 git status --short
 git status --ignored --short
 ```
 
-8. Confirm ignored/generated files are not staged.
-9. Commit:
+9. Confirm ignored/generated files are not staged.
+10. Commit:
 
 ```bash
 git add .
@@ -781,9 +783,10 @@ git commit -m "Short imperative summary"
 git push
 ```
 
-10. In final handoff, report:
+11. In final handoff, report:
    - files changed
    - checks run
+   - executor/reviewer outcome
    - commit hash
    - push status
    - next recommended step
@@ -791,4 +794,3 @@ git push
 ## 7. First Next Action For A New Agent
 
 Start with Step 1. Create the Python project scaffold and make `python -m music_decomp --version` plus `pytest` pass. Do not attempt Demucs, FFmpeg, recording, or GUI implementation until the scaffold is committed and pushed.
-
