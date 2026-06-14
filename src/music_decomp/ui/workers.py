@@ -1,9 +1,4 @@
-"""Background-capable GUI worker abstractions.
-
-These workers are intentionally shell-level placeholders in Step 7. They expose
-the lifecycle, signal, and QRunnable shape needed by the GUI without running the
-FFmpeg, Demucs, or recorder pipelines that are scheduled for later steps.
-"""
+"""Background-capable GUI worker abstractions."""
 
 from __future__ import annotations
 
@@ -12,6 +7,8 @@ from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 from typing import Any, ClassVar
+
+from music_decomp.services.file_pipeline import FileSeparationPipeline
 
 from .widgets import MissingPySide6Error, import_qt_core
 
@@ -111,7 +108,7 @@ class BaseGuiWorker:
             result = self._run_operation()
         except Exception as exc:  # pragma: no cover - defensive for GUI callbacks
             self.state = WorkerState.FAILED
-            self.error_message = str(exc) or exc.__class__.__name__
+            self.error_message = _worker_error_message(exc)
             self.signals.failed.emit(self.error_message)
             return WorkerOutcome(
                 worker_type=self.worker_type,
@@ -123,7 +120,7 @@ class BaseGuiWorker:
         outcome = WorkerOutcome(
             worker_type=self.worker_type,
             state=WorkerState.FINISHED,
-            message=self.placeholder_message,
+            message=self._success_message(result),
             result=result,
         )
         self.signals.finished.emit(outcome)
@@ -138,31 +135,64 @@ class BaseGuiWorker:
             return {"status": "placeholder"}
         return self.operation()
 
+    def _success_message(self, result: object) -> str:
+        return self.placeholder_message
+
 
 class MediaProbeWorker(BaseGuiWorker):
-    """Shell worker for future FFprobe calls."""
+    """Worker for probing one local audio/video file."""
 
     worker_type = "media_probe"
-    placeholder_message = "Media probing will be wired in Step 8."
+    placeholder_message = "Media probe complete."
 
     def __init__(
         self,
         path: str | Path | None = None,
         *,
+        output_root: str | Path | None = None,
+        output_format: str = "wav",
+        device: str = "auto",
         operation: WorkerOperation | None = None,
+        pipeline: object | None = None,
         use_qt_signals: bool = True,
     ) -> None:
         super().__init__(
             operation=operation,
-            description="Preparing media probe.",
+            description="Probing media file.",
             use_qt_signals=use_qt_signals,
         )
         self.path = Path(path) if path is not None else None
+        self.output_root = Path(output_root) if output_root is not None else None
+        self.output_format = output_format
+        self.device = device
+        self.pipeline = pipeline
 
     def _run_operation(self) -> object:
         if self.operation is not None:
             return self.operation()
-        return {"path": self.path, "status": "probe-placeholder"}
+        if self.path is None:
+            raise ValueError("No media file path was provided for probing.")
+        pipeline = self.pipeline or FileSeparationPipeline()
+        try:
+            return pipeline.probe_input(self.path)  # type: ignore[attr-defined]
+        except Exception as exc:
+            record_probe_failure = getattr(pipeline, "record_probe_failure", None)
+            if record_probe_failure is None:
+                raise
+            raise record_probe_failure(
+                self.path,
+                output_root=self.output_root,
+                device=self.device,
+                output_format=self.output_format,
+                error_message=str(exc) or exc.__class__.__name__,
+            ) from exc
+
+    def _success_message(self, result: object) -> str:
+        media_input = getattr(result, "media_input", None)
+        kind = getattr(media_input, "kind", None)
+        if isinstance(kind, str):
+            return f"Media probe complete: {kind}"
+        return self.placeholder_message
 
 
 class RecordingWorker(BaseGuiWorker):
@@ -192,41 +222,62 @@ class RecordingWorker(BaseGuiWorker):
 
 
 class SeparationWorker(BaseGuiWorker):
-    """Shell worker for future separation jobs."""
+    """Worker for running the local file separation pipeline."""
 
     worker_type = "separation"
-    placeholder_message = (
-        "Separation pipeline will be wired in Step 8; highest is approximate."
-    )
+    placeholder_message = "File separation complete; highest is approximate."
 
     def __init__(
         self,
         input_path: str | Path | None = None,
         *,
+        output_root: str | Path | None = None,
         output_format: str = "wav",
         device: str = "auto",
         operation: WorkerOperation | None = None,
+        pipeline: object | None = None,
         use_qt_signals: bool = True,
     ) -> None:
         super().__init__(
             operation=operation,
-            description="Preparing separation worker.",
+            description="Running file separation pipeline.",
             use_qt_signals=use_qt_signals,
         )
         self.input_path = Path(input_path) if input_path is not None else None
+        self.output_root = Path(output_root) if output_root is not None else None
         self.output_format = output_format
         self.device = device
+        self.pipeline = pipeline
 
     def _run_operation(self) -> object:
         if self.operation is not None:
             return self.operation()
-        return {
-            "input_path": self.input_path,
-            "output_format": self.output_format,
-            "device": self.device,
-            "status": "separation-placeholder",
-            "highest_is_approximate": True,
-        }
+        if self.input_path is None:
+            raise ValueError("No input file path was provided for separation.")
+        pipeline = self.pipeline or FileSeparationPipeline()
+        return pipeline.run_file(  # type: ignore[attr-defined]
+            self.input_path,
+            output_root=self.output_root,
+            output_format=self.output_format,
+            device=self.device,
+            progress_callback=self._emit_pipeline_progress,
+        )
+
+    def _emit_pipeline_progress(
+        self,
+        stage: str,
+        message: str,
+        percent: int | None,
+    ) -> None:
+        self.signals.progress.emit(
+            WorkerUpdate(stage=stage, message=message, percent=percent)
+        )
+
+    def _success_message(self, result: object) -> str:
+        output_dir = getattr(result, "output_dir", None)
+        if output_dir is not None:
+            return f"File separation complete: {output_dir}"
+        return self.placeholder_message
 
 
 def create_qrunnable(worker: BaseGuiWorker) -> object:
@@ -260,3 +311,14 @@ def _create_signal_hub(*, use_qt_signals: bool) -> object:
         failed = qt_core.Signal(str)
 
     return QtWorkerSignals()
+
+
+def _worker_error_message(exc: BaseException) -> str:
+    message = str(exc) or exc.__class__.__name__
+    log_path = getattr(exc, "log_path", None)
+    if log_path is not None:
+        return f"{message}\nLog: {log_path}"
+    output_dir = getattr(exc, "output_dir", None)
+    if output_dir is not None:
+        return f"{message}\nOutput: {output_dir}"
+    return message

@@ -1,15 +1,22 @@
 from __future__ import annotations
 
 import builtins
+import json
+from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from music_decomp import app, cli
+from music_decomp.domain import MediaInput
+from music_decomp.services.export_service import ExportService
+from music_decomp.services.file_pipeline import FileSeparationPipeline, MediaProbeResult
 from music_decomp.ui.main_window import (
     HIGHEST_APPROXIMATE_NOTICE,
     MAIN_WINDOW_TABS,
     OUTPUT_FORMAT_OPTIONS,
+    format_probe_summary,
     tab_by_key,
     tab_titles,
 )
@@ -22,6 +29,10 @@ from music_decomp.ui.workers import (
     WorkerState,
     WorkerUpdate,
 )
+
+
+def _fixed_time() -> datetime:
+    return datetime(2026, 6, 14, 8, 9, 10, tzinfo=timezone.utc)
 
 
 def test_version_still_prints_and_exits_successfully(capsys: pytest.CaptureFixture[str]) -> None:
@@ -134,10 +145,30 @@ def test_required_tab_controls_are_declared() -> None:
 def test_workers_are_instantiable_without_qt_and_emit_fallback_signals(tmp_path: Path) -> None:
     updates: list[WorkerUpdate] = []
     outcomes: list[WorkerOutcome] = []
+    output_dir = tmp_path / "outputs" / "job"
+    result = SimpleNamespace(output_dir=output_dir, highest_is_approximate=True)
+    calls: list[tuple[Path, Path | None, str, str]] = []
+
+    class FakePipeline:
+        def run_file(
+            self,
+            input_path: Path,
+            *,
+            output_root: Path | None,
+            output_format: str,
+            device: str,
+            progress_callback: object,
+        ) -> object:
+            calls.append((Path(input_path), output_root, output_format, device))
+            progress_callback("fake", "Fake pipeline progress.", 42)  # type: ignore[operator]
+            return result
+
     worker = SeparationWorker(
         tmp_path / "song.wav",
+        output_root=tmp_path / "outputs",
         output_format="flac",
         device="cpu",
+        pipeline=FakePipeline(),
         use_qt_signals=False,
     )
     worker.signals.progress.connect(updates.append)
@@ -151,31 +182,146 @@ def test_workers_are_instantiable_without_qt_and_emit_fallback_signals(tmp_path:
     assert outcomes == [outcome]
     assert updates[0].stage == "queued"
     assert updates[1].stage == "running"
-    assert outcome.result == {
-        "input_path": tmp_path / "song.wav",
-        "output_format": "flac",
-        "device": "cpu",
-        "status": "separation-placeholder",
-        "highest_is_approximate": True,
-    }
+    assert updates[2] == WorkerUpdate(
+        stage="fake",
+        message="Fake pipeline progress.",
+        percent=42,
+    )
+    assert outcome.result == result
+    assert outcome.message == f"File separation complete: {output_dir}"
+    assert calls == [(tmp_path / "song.wav", tmp_path / "outputs", "flac", "cpu")]
+
+
+def test_separation_worker_failure_message_includes_log_path(tmp_path: Path) -> None:
+    failed_messages: list[str] = []
+    log_path = tmp_path / "outputs" / "job" / "job.log"
+
+    class PipelineError(RuntimeError):
+        def __init__(self) -> None:
+            super().__init__("pipeline failed")
+            self.log_path = log_path
+
+    class FakePipeline:
+        def run_file(self, *args: object, **kwargs: object) -> object:
+            raise PipelineError()
+
+    worker = SeparationWorker(
+        tmp_path / "song.wav",
+        pipeline=FakePipeline(),
+        use_qt_signals=False,
+    )
+    worker.signals.failed.connect(failed_messages.append)
+
+    outcome = worker.run()
+
+    assert outcome.state == WorkerState.FAILED
+    assert outcome.message == f"pipeline failed\nLog: {log_path}"
+    assert failed_messages == [outcome.message]
+
+
+def test_media_probe_worker_failure_creates_log_artifacts_without_qt(
+    tmp_path: Path,
+) -> None:
+    failed_messages: list[str] = []
+
+    class FailingMediaService:
+        def probe(self, path: str | Path) -> object:
+            raise OSError("cannot read media")
+
+    pipeline = FileSeparationPipeline(
+        media_service=FailingMediaService(),  # type: ignore[arg-type]
+        separation_service=object(),  # type: ignore[arg-type]
+        export_service=ExportService(output_root=tmp_path / "default", clock=_fixed_time),
+        clock=_fixed_time,
+    )
+    worker = MediaProbeWorker(
+        tmp_path / "broken.mp3",
+        output_root=tmp_path / "outputs",
+        output_format="mp3",
+        device="cpu",
+        pipeline=pipeline,
+        use_qt_signals=False,
+    )
+    worker.signals.failed.connect(failed_messages.append)
+
+    outcome = worker.run()
+
+    log_path = (
+        tmp_path
+        / "outputs"
+        / "20260614-080910-broken-probe-failed"
+        / "job.log"
+    )
+    metadata_path = log_path.with_name("job.json")
+    assert outcome.state == WorkerState.FAILED
+    assert failed_messages == [outcome.message]
+    assert "cannot read media" in outcome.message
+    assert f"Log: {log_path}" in outcome.message
+    assert "cannot read media" in log_path.read_text(encoding="utf-8")
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    assert metadata["status"] == "failure"
+    assert metadata["failure_stage"] == "probe"
+    assert metadata["requested_device"] == "cpu"
+    assert metadata["output_format"] == "mp3"
 
 
 def test_worker_classes_expose_expected_shell_state(tmp_path: Path) -> None:
-    media_worker = MediaProbeWorker(tmp_path / "clip.mp4", use_qt_signals=False)
+    probe_result = MediaProbeResult(
+        media_input=MediaInput(
+            kind="video",
+            path=tmp_path / "clip.mp4",
+            title="clip",
+            duration_seconds=8.0,
+            sample_rate=48000,
+        ),
+        stream_summary=("video #0, h264, 1920x1080", "audio #1, aac, 48000 Hz, 2 ch"),
+        raw_probe_data={"streams": []},
+    )
+
+    class FakePipeline:
+        def probe_input(self, path: Path) -> MediaProbeResult:
+            assert path == tmp_path / "clip.mp4"
+            return probe_result
+
+    media_worker = MediaProbeWorker(
+        tmp_path / "clip.mp4",
+        pipeline=FakePipeline(),
+        use_qt_signals=False,
+    )
     recording_worker = RecordingWorker("default", use_qt_signals=False)
 
     assert media_worker.worker_type == "media_probe"
     assert media_worker.state == WorkerState.IDLE
-    assert media_worker.run().result == {
-        "path": tmp_path / "clip.mp4",
-        "status": "probe-placeholder",
-    }
+    media_outcome = media_worker.run()
+    assert media_outcome.result == probe_result
+    assert media_outcome.message == "Media probe complete: video"
 
     assert recording_worker.worker_type == "recording"
     assert recording_worker.run().result == {
         "device_id": "default",
         "status": "recording-placeholder",
     }
+
+
+def test_format_probe_summary_includes_stream_details(tmp_path: Path) -> None:
+    probe_result = MediaProbeResult(
+        media_input=MediaInput(
+            kind="video",
+            path=tmp_path / "clip.mp4",
+            title="clip",
+            duration_seconds=8.0,
+            sample_rate=48000,
+        ),
+        stream_summary=("video #0, h264, 1920x1080", "audio #1, aac, 48000 Hz, 2 ch"),
+        raw_probe_data={},
+    )
+
+    summary = format_probe_summary(probe_result)
+
+    assert "Kind: video" in summary
+    assert "Duration: 8.0 s" in summary
+    assert "Sample rate: 48000 Hz" in summary
+    assert "- audio #1, aac, 48000 Hz, 2 ch" in summary
 
 
 def test_qrunnable_adapter_has_clear_missing_pyside6_error(

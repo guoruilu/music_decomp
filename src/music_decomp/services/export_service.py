@@ -69,9 +69,7 @@ class ExportService:
         root = Path(output_root) if output_root is not None else self.output_root
         timestamp = self._clock().strftime("%Y%m%d-%H%M%S")
         title = media_input.title or media_input.path.stem
-        job_dir = root / f"{timestamp}-{safe_filename(title)}"
-        job_dir.mkdir(parents=True, exist_ok=False)
-        return job_dir
+        return _create_unique_directory(root / f"{timestamp}-{safe_filename(title)}")
 
     def prepare_job(
         self,
@@ -181,3 +179,14 @@ class ExportService:
         if error_message is not None:
             metadata["error_message"] = error_message
         return metadata
+
+
+def _create_unique_directory(path: Path) -> Path:
+    for index in range(1, 1000):
+        candidate = path if index == 1 else Path(f"{path}-{index}")
+        try:
+            candidate.mkdir(parents=True, exist_ok=False)
+            return candidate
+        except FileExistsError:
+            continue
+    raise FileExistsError(f"Unable to create unique job directory based on {path}")

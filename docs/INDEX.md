@@ -13,6 +13,7 @@
 - [Separation service with Demucs](by-feature/separation-service-demucs.md)
 - [Recorder service](by-feature/recorder-service.md)
 - [GUI shell](by-feature/gui-shell.md)
+- [File separation pipeline](by-feature/file-separation-pipeline.md)
 
 ## By Date
 
@@ -28,7 +29,9 @@
 - [2026-06-13 Step 5 separation service](by-date/2026-06-13-step-5-separation-service.md)
 - [2026-06-13 Step 6 recorder service](by-date/2026-06-13-step-6-recorder-service.md)
 - [2026-06-13 Step 7 GUI shell](by-date/2026-06-13-step-7-gui-shell.md)
+- [2026-06-14 Step 8 file separation pipeline](by-date/2026-06-14-step-8-file-separation.md)
 
 ## Requirement Records
 
 - [User requirements by date](by-date/2026-06-13-user-requirements.md)
+- [2026-06-14 user requirements](by-date/2026-06-14-user-requirements.md)

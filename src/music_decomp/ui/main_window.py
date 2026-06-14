@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from music_decomp.paths import project_root
+from music_decomp.services.file_pipeline import FileSeparationResult, MediaProbeResult
 
 from .widgets import (
     ControlSpec,
@@ -20,7 +21,7 @@ from .widgets import (
     populate_combo_box,
     selected_file_summary,
 )
-from .workers import SeparationWorker, WorkerOutcome, WorkerUpdate
+from .workers import MediaProbeWorker, SeparationWorker, WorkerOutcome, WorkerUpdate
 
 OUTPUT_FORMAT_OPTIONS = (
     OptionSpec("WAV", "wav"),
@@ -113,6 +114,25 @@ def tab_by_key(key: str) -> TabSpec:
     raise KeyError(key)
 
 
+def format_probe_summary(probe: MediaProbeResult) -> str:
+    """Return user-facing selected-file details from a media probe."""
+    media_input = probe.media_input
+    stream_lines = "\n".join(f"- {summary}" for summary in probe.stream_summary)
+    sample_rate = (
+        f"{media_input.sample_rate} Hz"
+        if media_input.sample_rate is not None
+        else "unavailable"
+    )
+    return (
+        f"{media_input.title}\n"
+        f"{media_input.path}\n"
+        f"Kind: {media_input.kind}\n"
+        f"Duration: {_format_duration(media_input.duration_seconds)}\n"
+        f"Sample rate: {sample_rate}\n"
+        f"Streams:\n{stream_lines}"
+    )
+
+
 def _create_qt_main_window_class(qt: Any) -> type[Any]:
     QtCore = qt.QtCore
     QtGui = qt.QtGui
@@ -122,6 +142,7 @@ def _create_qt_main_window_class(qt: Any) -> type[Any]:
         def __init__(self, parent: object | None = None) -> None:
             super().__init__(parent)
             self.selected_file: Path | None = None
+            self.selected_probe: MediaProbeResult | None = None
             self.current_output_folder: Path | None = None
             self.output_root = project_root() / "outputs"
             self._active_workers: list[object] = []
@@ -191,9 +212,7 @@ def _create_qt_main_window_class(qt: Any) -> type[Any]:
 
             self.start_separation_button = QtWidgets.QPushButton("Start Separation")
             self.start_separation_button.setObjectName("startSeparationButton")
-            self.start_separation_button.clicked.connect(
-                self._start_placeholder_separation
-            )
+            self.start_separation_button.clicked.connect(self._start_file_separation)
             layout.addWidget(self.start_separation_button)
 
             self.file_status_label = create_status_label(qt, HIGHEST_APPROXIMATE_NOTICE)
@@ -326,25 +345,49 @@ def _create_qt_main_window_class(qt: Any) -> type[Any]:
 
         def _set_selected_file(self, path: Path) -> None:
             self.selected_file = Path(path)
+            self.selected_probe = None
             self.selected_file_label.setText(selected_file_summary(self.selected_file))
-            self.file_status_label.setText(HIGHEST_APPROXIMATE_NOTICE)
+            self.file_status_label.setText("Probing media file...")
             self._clear_error()
+            self._start_probe_worker(self.selected_file)
 
-        def _start_placeholder_separation(self) -> None:
+        def _start_probe_worker(self, path: Path) -> None:
+            worker = MediaProbeWorker(
+                path,
+                output_root=self._current_output_root(),
+                output_format=combo_value(self.output_format_combo),
+                device=combo_value(self.device_combo),
+                use_qt_signals=True,
+            )
+            worker.signals.started.connect(self._handle_worker_started)
+            worker.signals.progress.connect(self._handle_worker_progress)
+            worker.signals.finished.connect(self._handle_probe_finished)
+            worker.signals.failed.connect(self._handle_probe_failed)
+            worker.queue()
+
+            runnable = worker.as_qrunnable()
+            self._active_workers.append(worker)
+            self._active_runnables.append(runnable)
+            QtCore.QThreadPool.globalInstance().start(runnable)
+
+        def _start_file_separation(self) -> None:
             if self.selected_file is None:
                 self._show_error("Choose or drop a file before starting separation.")
                 return
 
             output_format = combo_value(self.output_format_combo)
             device = combo_value(self.device_combo)
+            self.output_root = self._current_output_root()
             self.jobs_list.addItem(f"{self.selected_file.name} - queued")
             self.progress_label.setText("Queued")
             self.job_status_label.setText("Preparing")
+            self.start_separation_button.setEnabled(False)
             self.tabs.setCurrentIndex(2)
             self._clear_error()
 
             worker = SeparationWorker(
                 self.selected_file,
+                output_root=self.output_root,
                 output_format=output_format,
                 device=device,
                 use_qt_signals=True,
@@ -352,7 +395,7 @@ def _create_qt_main_window_class(qt: Any) -> type[Any]:
             worker.signals.started.connect(self._handle_worker_started)
             worker.signals.progress.connect(self._handle_worker_progress)
             worker.signals.finished.connect(self._handle_worker_finished)
-            worker.signals.failed.connect(self._handle_worker_failed)
+            worker.signals.failed.connect(self._handle_separation_failed)
             worker.queue()
 
             runnable = worker.as_qrunnable()
@@ -370,14 +413,57 @@ def _create_qt_main_window_class(qt: Any) -> type[Any]:
             self.progress_label.setText(f"{update.message} ({update.percent}%)")
 
         def _handle_worker_finished(self, outcome: WorkerOutcome) -> None:
+            if outcome.worker_type == "media_probe":
+                self._handle_probe_finished(outcome)
+                return
+            if outcome.worker_type == "separation":
+                self._handle_separation_finished(outcome)
+                return
             self.job_status_label.setText("Complete")
             self.progress_label.setText(outcome.message)
-            self.current_output_folder = self.output_root
-            self.jobs_list.addItem("Placeholder separation complete")
-            self.file_status_label.setText(HIGHEST_APPROXIMATE_NOTICE)
+            self.file_status_label.setText(outcome.message)
 
         def _handle_worker_failed(self, message: str) -> None:
             self.job_status_label.setText("Failed")
+            self._show_error(message)
+
+        def _handle_probe_finished(self, outcome: WorkerOutcome) -> None:
+            result = outcome.result
+            if not isinstance(result, MediaProbeResult):
+                self.file_status_label.setText(outcome.message)
+                return
+            self.selected_probe = result
+            self.selected_file_label.setText(format_probe_summary(result))
+            self.file_status_label.setText(
+                "Media ready for separation. " + HIGHEST_APPROXIMATE_NOTICE
+            )
+            self._clear_error()
+
+        def _handle_probe_failed(self, message: str) -> None:
+            self.selected_probe = None
+            self.file_status_label.setText(f"Media probe failed: {message}")
+            self._show_error(message)
+
+        def _handle_separation_finished(self, outcome: WorkerOutcome) -> None:
+            self.start_separation_button.setEnabled(True)
+            self.job_status_label.setText("Complete")
+            self.progress_label.setText(outcome.message)
+            result = outcome.result
+            if isinstance(result, FileSeparationResult):
+                self.current_output_folder = result.output_dir
+                self.jobs_list.addItem(f"Complete - {result.output_dir}")
+                self.file_status_label.setText(
+                    f"Output folder: {result.output_dir}. "
+                    + HIGHEST_APPROXIMATE_NOTICE
+                )
+                return
+            self.jobs_list.addItem("Separation complete")
+            self.file_status_label.setText(HIGHEST_APPROXIMATE_NOTICE)
+
+        def _handle_separation_failed(self, message: str) -> None:
+            self.start_separation_button.setEnabled(True)
+            self.job_status_label.setText("Failed")
+            self.progress_label.setText("Failed")
             self._show_error(message)
 
         def _refresh_recording_devices(self) -> None:
@@ -431,6 +517,10 @@ def _create_qt_main_window_class(qt: Any) -> type[Any]:
             self.output_root_edit.setText(str(self.output_root))
             self._clear_error()
 
+        def _current_output_root(self) -> Path:
+            value = self.output_root_edit.text().strip()
+            return Path(value) if value else self.output_root
+
         def _open_output_folder(self) -> None:
             if self.current_output_folder is None:
                 self._show_error("No output folder is available yet.")
@@ -457,6 +547,13 @@ __all__ = [
     "MAIN_WINDOW_TABS",
     "MainWindow",
     "OUTPUT_FORMAT_OPTIONS",
+    "format_probe_summary",
     "tab_by_key",
     "tab_titles",
 ]
+
+
+def _format_duration(duration_seconds: float | None) -> str:
+    if duration_seconds is None:
+        return "unavailable"
+    return f"{duration_seconds:.1f} s"
