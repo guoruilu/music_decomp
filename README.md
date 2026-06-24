@@ -10,9 +10,10 @@ other tools on the user machine.
 - Package name: `music-decomp`
 - Import package: `music_decomp`
 - Console script: `music-decomp`
-- Current implementation step: Step 9, recording separation pipeline
-- Latest committed baseline before this Step 9 change set:
-  `55cb0e8 Refresh project documentation status`
+- Current implementation step: Step 10, CLI workflows for automation and
+  testing
+- Latest committed baseline before this Step 10 change set:
+  `76becab Wire recording separation pipeline`
 
 Implemented so far:
 
@@ -27,11 +28,12 @@ Implemented so far:
 - End-to-end local audio/video file pipeline wired into the GUI worker layer.
 - Recording-to-separation GUI flow wired through `RecorderService` and the
   shared separation pipeline.
+- CLI workflows for `gui`, `probe`, `separate`, and
+  `list-recording-devices`, with JSON success output and readable default
+  errors.
 
 Not complete yet:
 
-- CLI workflows for `probe`, `separate`, and `list-recording-devices` are still
-  Step 10 work.
 - Dependency lock files, asset manifests, Windows packaging, offline acceptance
   testing, and user documentation are still pending.
 - Real Windows manual acceptance with bundled/configured FFmpeg, Demucs, model

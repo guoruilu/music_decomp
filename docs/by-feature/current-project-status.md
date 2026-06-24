@@ -10,11 +10,12 @@ next implementation task starts. The detailed source of truth remains
 
 - Remote: `git@github.com:guoruilu/music_decomp.git`
 - Branch: `main`
-- Latest committed baseline before this Step 9 change set:
-  `55cb0e8 Refresh project documentation status`
-- Current completed execution step: Step 9 - Wire End-To-End Recording
-  Separation
-- Next planned execution step: Step 10 - Add CLI For Automation And Testing
+- Latest committed baseline before this Step 10 change set:
+  `76becab Wire recording separation pipeline`
+- Current completed execution step: Step 10 - Add CLI For Automation And
+  Testing
+- Next planned execution step: Step 11 - Add Dependency Locks And Asset
+  Manifests
 
 ## Required Workflow
 
@@ -55,7 +56,8 @@ The following planned steps have tracked commits:
 | Step 7 GUI shell | `52b49cd` | Complete |
 | Step 8 file separation pipeline | `f149209` | Complete |
 | Documentation refresh | `55cb0e8` | Complete |
-| Step 9 recording separation pipeline | This change set | Complete |
+| Step 9 recording separation pipeline | `76becab` | Complete |
+| Step 10 CLI workflows | This change set | Complete |
 
 ## Current Implementation Capabilities
 
@@ -81,11 +83,15 @@ The following planned steps have tracked commits:
 - The Step 9 post-review fix makes `run_recording` probe the finalized WAV and
   call `MediaService.extract_audio` so separation receives canonical stereo
   44.1 kHz `_intermediate/input.wav`.
+- The CLI supports `gui`, `probe`, `separate`, and
+  `list-recording-devices`.
+- CLI success output for non-GUI workflows is JSON; separation progress goes to
+  stderr.
+- CLI failures return nonzero and default to readable errors without tracebacks
+  unless `--debug` is passed.
 
 ## Remaining Planned Work
 
-- Step 10: CLI workflows for `probe`, `separate`, and
-  `list-recording-devices`.
 - Step 11: dependency lock files and asset manifests.
 - Step 12: PyInstaller one-folder Windows packaging.
 - Step 13: clean Windows offline acceptance test.
@@ -99,15 +105,16 @@ The following planned steps have tracked commits:
 - Real Windows WASAPI loopback recording has not been manually validated.
 - `requirements/`, `packaging/`, `scripts/`, `vendor/`, and `models/` are not
   present yet because their planned steps have not started.
-- The current CLI only supports `--version` and `gui`.
 - Real Windows WASAPI loopback recording and separation has not been manually
   accepted; Step 9 tests are fake-based in this Linux/no-heavy-deps environment.
+- Real CLI `probe`/`separate` integration with actual FFmpeg, Demucs, and model
+  files has not been manually accepted in this environment.
 - `highest` is labeled as approximate in service results and GUI text, but the
   regular success `job.json` metadata does not yet persist per-stem
   approximation details.
 - Full test execution requires local development dependencies. In the
-  2026-06-24 documentation refresh and Step 9 executor environments, `pytest`
-  was not installed.
+  2026-06-24 documentation refresh and Step 9/10 executor environments,
+  `pytest` was not installed.
 - Step 9 real Windows WASAPI loopback acceptance remains pending until a
   Windows machine with browser playback, FFmpeg, Demucs, and model files is
   available.
