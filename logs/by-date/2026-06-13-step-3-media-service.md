@@ -80,9 +80,12 @@ No changed files existed outside `docs/codex-review/` before Step 3 work started
 ## Known Risks Or Incomplete Items
 
 - Real FFmpeg extraction was not run against a sample media file in this executor pass.
-- Reviewer subagent re-check is still pending after this fix.
-- Main agent still needs to run final status checks, coordinate review, commit, and push after approval.
+- The stale earlier note that reviewer re-check, final status checks, commit,
+  and push were pending was corrected during the 2026-06-24 documentation
+  refresh. Commit history shows Step 3 was accepted and committed as
+  `f732474 Add FFmpeg media service` before Step 4 through Step 8 were added.
 
 ## Result
 
-Step 3 executor implementation has addressed the first reviewer change request and is ready for reviewer re-check.
+Step 3 executor implementation addressed the first reviewer change request and
+was accepted as the FFmpeg media-service foundation for later steps.

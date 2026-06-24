@@ -3,6 +3,7 @@
 ## By Feature
 
 - [Windows offline stem separation plan](by-feature/windows-offline-stem-separation-plan.md)
+- [Current project status](by-feature/current-project-status.md)
 - [Step-by-step execution plan](by-feature/step-by-step-execution-plan.md)
 - [Agent coordination workflow](by-feature/agent-coordination-workflow.md)
 - [Repository hygiene and git workflow](by-feature/repository-hygiene.md)
@@ -30,8 +31,10 @@
 - [2026-06-13 Step 6 recorder service](by-date/2026-06-13-step-6-recorder-service.md)
 - [2026-06-13 Step 7 GUI shell](by-date/2026-06-13-step-7-gui-shell.md)
 - [2026-06-14 Step 8 file separation pipeline](by-date/2026-06-14-step-8-file-separation.md)
+- [2026-06-24 documentation refresh](by-date/2026-06-24-documentation-refresh.md)
 
 ## Requirement Records
 
 - [User requirements by date](by-date/2026-06-13-user-requirements.md)
 - [2026-06-14 user requirements](by-date/2026-06-14-user-requirements.md)
+- [2026-06-24 user requirements](by-date/2026-06-24-user-requirements.md)

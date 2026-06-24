@@ -36,6 +36,7 @@ See `logs/by-date/2026-06-13-step-3-media-service.md` for the exact executor log
 
 ## Handoff
 
-The Step 3 executor implementation has addressed the first reviewer change request and is ready for reviewer re-check. Reviewer approval, final main-agent validation, commit, and push are pending.
+The Step 3 executor implementation addressed the first reviewer change request
+and the accepted work was committed as `f732474 Add FFmpeg media service`.
 
-Next step after approval: Step 4 - Implement Output Directory And Metadata.
+Step 4 and later steps have already been completed on top of this work.

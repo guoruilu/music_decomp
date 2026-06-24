@@ -6,7 +6,10 @@ Related execution plan step: [Step 3 - Implement MediaService With FFmpeg](step-
 
 ## Status
 
- Step 3 executor implementation is complete after addressing the first reviewer change request. Reviewer re-check, final main-agent validation, commit, and push are still pending.
+Step 3 is complete. The executor implementation addressed the reviewer change
+request for missing-FFprobe coverage, the accepted work was committed as
+`f732474 Add FFmpeg media service`, and later Step 4 through Step 8 commits were
+built on top of it.
 
 ## Implemented Files
 
@@ -63,4 +66,5 @@ Additional final checks are recorded in `logs/by-date/2026-06-13-step-3-media-se
 - No audio, model, GUI, or packaging dependencies were added.
 - No real FFmpeg invocation or manual media extraction was run in this executor step.
 - `docs/codex-review/` existed as user-owned untracked content before this work and was not modified.
-- Next workflow action: main agent should return the updated Step 3 diff to the separate reviewer subagent.
+- Next implementation step after Step 3 was Step 4, which has already been
+  completed and committed.

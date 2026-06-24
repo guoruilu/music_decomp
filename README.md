@@ -1,29 +1,72 @@
 # Music Decomp
 
-Music Decomp is planned as a Windows offline desktop application for separating music into stems. The first implementation step provides only the Python project scaffold, importable package, CLI version check, and path helpers.
+Music Decomp is a planned Windows offline desktop application for separating
+local music and recorded system audio into stems. The target delivery is a
+portable Windows folder that runs without installing Python, FFmpeg, Demucs, or
+other tools on the user machine.
 
 ## Current Status
 
 - Package name: `music-decomp`
 - Import package: `music_decomp`
 - Console script: `music-decomp`
-- Runtime dependencies: none at this scaffold step
-- Development test dependency: `pytest`
+- Current implementation step: Step 8, local file separation pipeline
+- Latest tracked commit reviewed in docs: `f149209 Wire file separation pipeline`
 
-Later steps will add media probing, FFmpeg integration, separation services, recording, GUI, and Windows packaging.
+Implemented so far:
+
+- Python project scaffold and path helpers.
+- Core media and job domain models.
+- FFmpeg/FFprobe media probing and audio extraction service.
+- Output directory, job log, and `job.json` metadata service.
+- Demucs-backed separation service with derived `lowest` and approximate
+  `highest` outputs.
+- System-audio recorder service with mocked test coverage.
+- PySide6 GUI shell with Files, Record, Jobs, and Settings tabs.
+- End-to-end local audio/video file pipeline wired into the GUI worker layer.
+
+Not complete yet:
+
+- Recording-to-separation GUI flow is still Step 9 work.
+- CLI workflows for `probe`, `separate`, and `list-recording-devices` are still
+  Step 10 work.
+- Dependency lock files, asset manifests, Windows packaging, offline acceptance
+  testing, and user documentation are still pending.
+- Real Windows manual acceptance with bundled/configured FFmpeg, Demucs, model
+  files, and WASAPI loopback has not been completed.
 
 ## Development
 
-Run the current checks from the repository root:
+Run source-mode checks from the repository root:
 
 ```bash
-PYTHONPATH=src python3 -m pytest
 PYTHONPATH=src python3 -m music_decomp --version
+PYTHONPATH=src python3 -m compileall -q src tests
 ```
 
-The package can also be installed in editable mode when local build dependencies are available:
+When local development dependencies are installed, run:
 
 ```bash
 python3 -m pip install -e .[dev]
-music-decomp --version
+PYTHONPATH=src python3 -m pytest
 ```
+
+Optional feature extras are declared in `pyproject.toml`:
+
+- `gui`: PySide6 GUI dependency.
+- `separation`: Demucs, Torch, Torchaudio, and NumPy dependencies.
+- `recorder`: SoundCard dependency for system-audio recording.
+
+## Documentation
+
+Start with these files:
+
+- [Project agent index](AGENTS.md)
+- [Documentation index](docs/INDEX.md)
+- [Current project status](docs/by-feature/current-project-status.md)
+- [Step-by-step execution plan](docs/by-feature/step-by-step-execution-plan.md)
+- [Windows offline stem separation plan](docs/by-feature/windows-offline-stem-separation-plan.md)
+
+The execution plan remains the source of truth for the required step order and
+acceptance criteria. Each completed step must update both `docs/` and `logs/`
+before commit and push.

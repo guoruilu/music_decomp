@@ -3,6 +3,7 @@
 ## By Feature
 
 - [Documentation bootstrap](by-feature/documentation-bootstrap.md)
+- [Documentation maintenance](by-feature/documentation-maintenance.md)
 - [Repository hygiene](by-feature/repository-hygiene.md)
 - [Detailed execution planning](by-feature/detailed-execution-planning.md)
 - [Agent coordination workflow](by-feature/agent-coordination-workflow.md)
@@ -29,3 +30,4 @@
 - [2026-06-13 Step 6 recorder service](by-date/2026-06-13-step-6-recorder-service.md)
 - [2026-06-13 Step 7 GUI shell](by-date/2026-06-13-step-7-gui-shell.md)
 - [2026-06-14 Step 8 file separation pipeline](by-date/2026-06-14-step-8-file-separation.md)
+- [2026-06-24 documentation refresh](by-date/2026-06-24-documentation-refresh.md)
