@@ -1,0 +1,15 @@
+# Windows CUDA dependency lock
+# Status: NOT GENERATED.
+#
+# This placeholder is intentionally empty because Step 11 ran in a Linux
+# no-network executor environment. Generate the real lock on a Windows x64
+# Python 3.11 build machine with the target NVIDIA GPU/CUDA wheel channel after
+# installing from requirements/base.in and running the repository test suite plus
+# CUDA smoke checks.
+#
+# The final lock must either include the selected CUDA PyTorch index options at
+# the top or be installed with the same index options documented in the
+# dependency manifest.
+#
+# Do not package or claim a reproducible Windows CUDA build from this file until
+# pinned package lines have replaced this placeholder.

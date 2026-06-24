@@ -10,12 +10,11 @@ next implementation task starts. The detailed source of truth remains
 
 - Remote: `git@github.com:guoruilu/music_decomp.git`
 - Branch: `main`
-- Latest committed baseline before this Step 10 change set:
-  `76becab Wire recording separation pipeline`
-- Current completed execution step: Step 10 - Add CLI For Automation And
-  Testing
-- Next planned execution step: Step 11 - Add Dependency Locks And Asset
+- Latest committed baseline before this Step 11 change set:
+  `9dcc73c Add CLI workflows`
+- Current completed execution step: Step 11 - Add Dependency Locks And Asset
   Manifests
+- Next planned execution step: Step 12 - Package With PyInstaller
 
 ## Required Workflow
 
@@ -57,7 +56,8 @@ The following planned steps have tracked commits:
 | Step 8 file separation pipeline | `f149209` | Complete |
 | Documentation refresh | `55cb0e8` | Complete |
 | Step 9 recording separation pipeline | `76becab` | Complete |
-| Step 10 CLI workflows | This change set | Complete |
+| Step 10 CLI workflows | `9dcc73c` | Complete |
+| Step 11 dependency and asset manifest | This change set | Complete |
 
 ## Current Implementation Capabilities
 
@@ -89,10 +89,18 @@ The following planned steps have tracked commits:
   stderr.
 - CLI failures return nonzero and default to readable errors without tracebacks
   unless `--debug` is passed.
+- `requirements/base.in` records direct dependency input for future Windows
+  lock generation.
+- `requirements/win-cpu.txt` and `requirements/win-cuda.txt` exist as explicit
+  placeholders until a Windows x64 Python 3.11 build machine generates and
+  validates real pinned locks.
+- `docs/by-feature/dependency-and-asset-manifest.md` tracks required dependency,
+  FFmpeg, and Demucs model provenance fields.
+- `vendor/README.md` documents expected FFmpeg staging layout; `.gitignore`
+  keeps all other vendor assets ignored.
 
 ## Remaining Planned Work
 
-- Step 11: dependency lock files and asset manifests.
 - Step 12: PyInstaller one-folder Windows packaging.
 - Step 13: clean Windows offline acceptance test.
 - Step 14: user guide and troubleshooting documentation.
@@ -103,8 +111,12 @@ The following planned steps have tracked commits:
   logs. It still needs bundled or configured FFmpeg, Demucs, model files, and
   actual short audio/video inputs.
 - Real Windows WASAPI loopback recording has not been manually validated.
-- `requirements/`, `packaging/`, `scripts/`, `vendor/`, and `models/` are not
-  present yet because their planned steps have not started.
+- `packaging/`, `scripts/`, and `models/` are not present yet because their
+  planned steps have not started.
+- Real Windows CPU/CUDA dependency locks have not been generated; the current
+  files are placeholders by design.
+- FFmpeg binaries and model weights are not staged, and their checksum fields
+  remain pending in the manifest.
 - Real Windows WASAPI loopback recording and separation has not been manually
   accepted; Step 9 tests are fake-based in this Linux/no-heavy-deps environment.
 - Real CLI `probe`/`separate` integration with actual FFmpeg, Demucs, and model
@@ -113,7 +125,7 @@ The following planned steps have tracked commits:
   regular success `job.json` metadata does not yet persist per-stem
   approximation details.
 - Full test execution requires local development dependencies. In the
-  2026-06-24 documentation refresh and Step 9/10 executor environments,
+  2026-06-24 documentation refresh and Step 9/10/11 executor environments,
   `pytest` was not installed.
 - Step 9 real Windows WASAPI loopback acceptance remains pending until a
   Windows machine with browser playback, FFmpeg, Demucs, and model files is

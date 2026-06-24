@@ -1,0 +1,16 @@
+# Direct dependency input for Windows lock generation.
+#
+# Keep this file to direct project dependencies only. Transitive packages belong
+# in the generated Windows lock files after validation on the build machine.
+
+PySide6>=6.6,<7
+demucs>=4.0,<5
+torch>=2.0,<3
+torchaudio>=2.0,<3
+numpy>=1.23,<3
+SoundCard>=0.4.6,<1
+pytest>=8.0,<9
+pyinstaller>=6.0,<7
+
+# WAV recording currently uses Python's standard library wave module.
+# Do not add soundfile unless the implementation switches to it.

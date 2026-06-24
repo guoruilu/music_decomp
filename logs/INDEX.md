@@ -17,6 +17,7 @@
 - [File separation pipeline](by-feature/file-separation-pipeline.md)
 - [Recording separation pipeline](by-feature/recording-separation-pipeline.md)
 - [CLI workflows](by-feature/cli-workflows.md)
+- [Dependency and asset manifest](by-feature/dependency-and-asset-manifest.md)
 
 ## By Date
 
@@ -35,3 +36,4 @@
 - [2026-06-24 documentation refresh](by-date/2026-06-24-documentation-refresh.md)
 - [2026-06-24 Step 9 recording separation](by-date/2026-06-24-step-9-recording-separation.md)
 - [2026-06-24 Step 10 CLI workflows](by-date/2026-06-24-step-10-cli-workflows.md)
+- [2026-06-24 Step 11 dependency and asset manifest](by-date/2026-06-24-step-11-dependency-and-asset-manifest.md)

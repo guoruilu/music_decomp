@@ -48,5 +48,5 @@ cache/
 
 # Large bundled dependencies should be managed as release artifacts unless explicitly approved.
 models/
-vendor/
-
+vendor/*
+!vendor/README.md

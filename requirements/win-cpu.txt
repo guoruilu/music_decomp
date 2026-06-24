@@ -1,0 +1,13 @@
+# Windows CPU dependency lock
+# Status: NOT GENERATED.
+#
+# This placeholder is intentionally empty because Step 11 ran in a Linux
+# no-network executor environment. Generate the real lock on a Windows x64
+# Python 3.11 build machine after installing from requirements/base.in, selecting
+# the CPU PyTorch wheel channel, and running the repository test suite.
+#
+# The final lock must either include the CPU PyTorch index options at the top or
+# be installed with the same index options documented in the dependency manifest.
+#
+# Do not package or claim a reproducible Windows CPU build from this file until
+# pinned package lines have replaced this placeholder.

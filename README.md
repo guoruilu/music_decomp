@@ -10,10 +10,9 @@ other tools on the user machine.
 - Package name: `music-decomp`
 - Import package: `music_decomp`
 - Console script: `music-decomp`
-- Current implementation step: Step 10, CLI workflows for automation and
-  testing
-- Latest committed baseline before this Step 10 change set:
-  `76becab Wire recording separation pipeline`
+- Current implementation step: Step 11, dependency and asset manifest
+- Latest committed baseline before this Step 11 change set:
+  `9dcc73c Add CLI workflows`
 
 Implemented so far:
 
@@ -31,11 +30,13 @@ Implemented so far:
 - CLI workflows for `gui`, `probe`, `separate`, and
   `list-recording-devices`, with JSON success output and readable default
   errors.
+- Dependency input files and asset manifest scaffolding for future Windows
+  CPU/CUDA locks, FFmpeg staging, and Demucs model checksum tracking.
 
 Not complete yet:
 
-- Dependency lock files, asset manifests, Windows packaging, offline acceptance
-  testing, and user documentation are still pending.
+- Real Windows dependency locks, Windows packaging, offline acceptance testing,
+  and user documentation are still pending.
 - Real Windows manual acceptance with bundled/configured FFmpeg, Demucs, model
   files, and WASAPI loopback has not been completed.
 
@@ -60,6 +61,10 @@ Optional feature extras are declared in `pyproject.toml`:
 - `gui`: PySide6 GUI dependency.
 - `separation`: Demucs, Torch, Torchaudio, and NumPy dependencies.
 - `recorder`: SoundCard dependency for system-audio recording.
+
+Step 11 also adds `requirements/base.in` as the direct dependency input for
+future Windows lock generation. The CPU/CUDA lock files are placeholders until
+they are generated and validated on a Windows x64 Python 3.11 build machine.
 
 ## Documentation
 
