@@ -12,6 +12,7 @@ from music_decomp import app, cli
 from music_decomp.domain import MediaInput
 from music_decomp.services.export_service import ExportService
 from music_decomp.services.file_pipeline import FileSeparationPipeline, MediaProbeResult
+from music_decomp.services.recorder_service import RecordingDevice
 from music_decomp.ui.main_window import (
     HIGHEST_APPROXIMATE_NOTICE,
     MAIN_WINDOW_TABS,
@@ -190,6 +191,143 @@ def test_workers_are_instantiable_without_qt_and_emit_fallback_signals(tmp_path:
     assert outcome.result == result
     assert outcome.message == f"File separation complete: {output_dir}"
     assert calls == [(tmp_path / "song.wav", tmp_path / "outputs", "flac", "cpu")]
+
+
+def test_separation_worker_routes_recordings_to_recording_pipeline(
+    tmp_path: Path,
+) -> None:
+    updates: list[WorkerUpdate] = []
+    recording_input = MediaInput(
+        kind="recording",
+        path=tmp_path / "recording.wav",
+        title="recording",
+        duration_seconds=12.0,
+        sample_rate=48_000,
+    )
+    output_dir = tmp_path / "outputs" / "recording-job"
+    result = SimpleNamespace(
+        output_dir=output_dir,
+        probe=SimpleNamespace(media_input=recording_input),
+    )
+    calls: list[tuple[MediaInput, Path | None, str, str]] = []
+
+    class FakePipeline:
+        def run_file(self, *args: object, **kwargs: object) -> object:
+            raise AssertionError("recording inputs must not use run_file")
+
+        def run_recording(
+            self,
+            media_input: MediaInput,
+            *,
+            output_root: Path | None,
+            output_format: str,
+            device: str,
+            progress_callback: object,
+        ) -> object:
+            calls.append((media_input, output_root, output_format, device))
+            progress_callback(
+                "extracting",
+                "Extracting canonical WAV from recording.",
+                25,
+            )  # type: ignore[operator]
+            return result
+
+    worker = SeparationWorker(
+        media_input=recording_input,
+        output_root=tmp_path / "outputs",
+        output_format="wav",
+        device="auto",
+        pipeline=FakePipeline(),
+        use_qt_signals=False,
+    )
+    worker.signals.progress.connect(updates.append)
+
+    outcome = worker.run()
+
+    assert outcome.state == WorkerState.FINISHED
+    assert outcome.result == result
+    assert outcome.message == f"Recording separation complete: {output_dir}"
+    assert calls == [(recording_input, tmp_path / "outputs", "wav", "auto")]
+    assert updates[-1] == WorkerUpdate(
+        stage="extracting",
+        message="Extracting canonical WAV from recording.",
+        percent=25,
+    )
+
+
+def test_recording_worker_uses_recorder_service_without_qt(tmp_path: Path) -> None:
+    recording_input = MediaInput(
+        kind="recording",
+        path=tmp_path / "take.wav",
+        title="take",
+        duration_seconds=3.0,
+        sample_rate=48_000,
+    )
+
+    class FakeRecorderService:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, str | None]] = []
+
+        def list_output_devices(self) -> list[RecordingDevice]:
+            self.calls.append(("list", None))
+            return [
+                RecordingDevice(
+                    id="speaker-1",
+                    name="Speakers",
+                    channels=2,
+                    is_default=True,
+                )
+            ]
+
+        def start_recording(self, device_id: str | None = None) -> Path:
+            self.calls.append(("start", device_id))
+            return tmp_path / "take.wav"
+
+        def stop_recording(self) -> MediaInput:
+            self.calls.append(("stop", None))
+            return recording_input
+
+    recorder_service = FakeRecorderService()
+
+    list_worker = RecordingWorker(
+        action="list_devices",
+        recorder_service=recorder_service,
+        use_qt_signals=False,
+    )
+    start_worker = RecordingWorker(
+        "speaker-1",
+        action="start",
+        recorder_service=recorder_service,
+        use_qt_signals=False,
+    )
+    stop_worker = RecordingWorker(
+        action="stop",
+        recorder_service=recorder_service,
+        use_qt_signals=False,
+    )
+
+    list_outcome = list_worker.run()
+    start_outcome = start_worker.run()
+    stop_outcome = stop_worker.run()
+
+    assert list_outcome.result == (
+        RecordingDevice(
+            id="speaker-1",
+            name="Speakers",
+            channels=2,
+            is_default=True,
+        ),
+    )
+    assert list_outcome.message == "Recording devices ready: 1"
+    assert start_outcome.result == tmp_path / "take.wav"
+    assert start_outcome.message == f"Recording started: {tmp_path / 'take.wav'}"
+    assert stop_outcome.result == recording_input
+    assert stop_outcome.message == f"Recording finalized: {tmp_path / 'take.wav'}"
+    assert recorder_service.calls == [
+        ("list", None),
+        ("start", "speaker-1"),
+        ("stop", None),
+    ]
 
 
 def test_separation_worker_failure_message_includes_log_path(tmp_path: Path) -> None:

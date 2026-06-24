@@ -15,6 +15,7 @@
 - [Recorder service](by-feature/recorder-service.md)
 - [GUI shell](by-feature/gui-shell.md)
 - [File separation pipeline](by-feature/file-separation-pipeline.md)
+- [Recording separation pipeline](by-feature/recording-separation-pipeline.md)
 
 ## By Date
 
@@ -31,3 +32,4 @@
 - [2026-06-13 Step 7 GUI shell](by-date/2026-06-13-step-7-gui-shell.md)
 - [2026-06-14 Step 8 file separation pipeline](by-date/2026-06-14-step-8-file-separation.md)
 - [2026-06-24 documentation refresh](by-date/2026-06-24-documentation-refresh.md)
+- [2026-06-24 Step 9 recording separation](by-date/2026-06-24-step-9-recording-separation.md)

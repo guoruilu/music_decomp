@@ -10,9 +10,11 @@ next implementation task starts. The detailed source of truth remains
 
 - Remote: `git@github.com:guoruilu/music_decomp.git`
 - Branch: `main`
-- Current synced commit: `f149209 Wire file separation pipeline`
-- Current completed execution step: Step 8 - Wire End-To-End File Separation
-- Next planned execution step: Step 9 - Wire End-To-End Recording Separation
+- Latest committed baseline before this Step 9 change set:
+  `55cb0e8 Refresh project documentation status`
+- Current completed execution step: Step 9 - Wire End-To-End Recording
+  Separation
+- Next planned execution step: Step 10 - Add CLI For Automation And Testing
 
 ## Required Workflow
 
@@ -52,6 +54,8 @@ The following planned steps have tracked commits:
 | Step 6 system audio recorder | `4aec90f` | Complete |
 | Step 7 GUI shell | `52b49cd` | Complete |
 | Step 8 file separation pipeline | `f149209` | Complete |
+| Documentation refresh | `55cb0e8` | Complete |
+| Step 9 recording separation pipeline | This change set | Complete |
 
 ## Current Implementation Capabilities
 
@@ -71,17 +75,14 @@ The following planned steps have tracked commits:
 - The PySide6 GUI shell has Files, Record, Jobs, and Settings tabs.
 - The Files tab and GUI worker layer are wired to the local file separation
   pipeline from media probe through metadata writing.
+- The Record tab is wired to `RecorderService`, stores stopped recordings as
+  `MediaInput(kind="recording")`, and routes them through
+  `FileSeparationPipeline.run_recording`.
+- The Step 9 post-review fix makes `run_recording` probe the finalized WAV and
+  call `MediaService.extract_audio` so separation receives canonical stereo
+  44.1 kHz `_intermediate/input.wav`.
 
 ## Remaining Planned Work
-
-Step 9 remains next:
-
-- Wire the Record tab to `RecorderService`.
-- Finalize a recorded WAV as `MediaInput(kind="recording")`.
-- Hand the recording to the same `SeparationJob` and file-pipeline flow.
-- Manually test Windows WASAPI loopback and separation.
-
-Later remaining steps:
 
 - Step 10: CLI workflows for `probe`, `separate`, and
   `list-recording-devices`.
@@ -99,13 +100,17 @@ Later remaining steps:
 - `requirements/`, `packaging/`, `scripts/`, `vendor/`, and `models/` are not
   present yet because their planned steps have not started.
 - The current CLI only supports `--version` and `gui`.
-- The Record tab still uses placeholder GUI behavior; it does not call
-  `RecorderService` yet.
+- Real Windows WASAPI loopback recording and separation has not been manually
+  accepted; Step 9 tests are fake-based in this Linux/no-heavy-deps environment.
 - `highest` is labeled as approximate in service results and GUI text, but the
   regular success `job.json` metadata does not yet persist per-stem
   approximation details.
 - Full test execution requires local development dependencies. In the
-  2026-06-24 documentation refresh environment, `pytest` was not installed.
+  2026-06-24 documentation refresh and Step 9 executor environments, `pytest`
+  was not installed.
+- Step 9 real Windows WASAPI loopback acceptance remains pending until a
+  Windows machine with browser playback, FFmpeg, Demucs, and model files is
+  available.
 
 ## Documentation Maintenance Notes
 

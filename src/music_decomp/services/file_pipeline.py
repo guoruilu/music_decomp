@@ -25,6 +25,7 @@ from music_decomp.services.separation_service import (
 )
 
 PipelineProgressCallback = Callable[[str, str, int | None], None]
+InputPreparationCallback = Callable[[MediaInput, Path], None]
 Clock = Callable[[], datetime]
 
 
@@ -152,13 +153,138 @@ class FileSeparationPipeline:
             _emit(progress_callback, "failed", "Media probe failed.", None)
             raise error from exc
 
+        return self._run_media_input(
+            probe,
+            started_at=started_at,
+            output_root=output_root_path,
+            device=device,
+            output_format=output_format,
+            progress_callback=progress_callback,
+            input_summary_label="probe complete",
+            input_stage="extracting",
+            input_message="Extracting canonical WAV.",
+            input_log_label="extract_audio",
+            prepare_input=lambda media_input, canonical_wav: self.media_service.extract_audio(
+                media_input.path,
+                canonical_wav,
+            ),
+            done_message="File separation complete.",
+            failure_message="File separation failed.",
+        )
+
+    def run_recording(
+        self,
+        media_input: MediaInput,
+        *,
+        output_root: str | Path | None = None,
+        device: Device = "auto",
+        output_format: OutputFormat = "wav",
+        progress_callback: PipelineProgressCallback | None = None,
+    ) -> FileSeparationResult:
+        """Run a finalized recording WAV through the Step 9 separation pipeline."""
+        if media_input.kind != "recording":
+            raise ValueError(
+                "run_recording requires MediaInput(kind='recording'); "
+                f"got {media_input.kind!r}"
+            )
+        started_at = self._clock()
+        output_root_path = (
+            Path(output_root) if output_root is not None else self.export_service.output_root
+        )
+        _emit(progress_callback, "probing", "Probing recording WAV.", 5)
+        try:
+            probe = self._probe_recording(media_input)
+        except Exception as exc:
+            error_message = _exception_text(exc)
+            error = self.record_probe_failure(
+                media_input.path,
+                output_root=output_root_path,
+                device=device,
+                output_format=output_format,
+                error_message=error_message,
+                started_at=started_at,
+                ended_at=self._clock(),
+            )
+            _emit(progress_callback, "failed", "Recording probe failed.", None)
+            raise error from exc
+
+        return self._run_media_input(
+            probe,
+            started_at=started_at,
+            output_root=output_root_path,
+            device=device,
+            output_format=output_format,
+            progress_callback=progress_callback,
+            input_summary_label="recording ready",
+            input_stage="extracting",
+            input_message="Extracting canonical WAV from recording.",
+            input_log_label="recording_extract_audio",
+            prepare_input=lambda recording_input, canonical_wav: self.media_service.extract_audio(
+                recording_input.path,
+                canonical_wav,
+            ),
+            done_message="Recording separation complete.",
+            failure_message="Recording separation failed.",
+        )
+
+    def _probe_recording(self, media_input: MediaInput) -> MediaProbeResult:
+        """Probe a finalized recording while preserving its recording kind."""
+        input_path = media_input.path
+        try:
+            probe_data = self.media_service.probe(input_path)
+        except Exception as exc:
+            raise MediaProbeError(
+                f"Unable to probe recording WAV {input_path}: {_exception_text(exc)}"
+            ) from exc
+
+        streams = _probe_streams(probe_data, input_path)
+        audio_streams = [stream for stream in streams if stream.get("codec_type") == "audio"]
+        if not audio_streams:
+            raise MediaProbeError(f"Recording WAV has no audio stream: {input_path}")
+
+        first_audio = audio_streams[0]
+        probed_duration = _probe_duration(probe_data, first_audio)
+        probed_sample_rate = _probe_sample_rate(first_audio)
+        normalized_input = MediaInput(
+            kind="recording",
+            path=input_path,
+            title=media_input.title or _probe_title(probe_data, input_path),
+            duration_seconds=probed_duration
+            if probed_duration is not None
+            else media_input.duration_seconds,
+            sample_rate=probed_sample_rate or media_input.sample_rate,
+        )
+        return MediaProbeResult(
+            media_input=normalized_input,
+            stream_summary=tuple(_stream_summary(stream) for stream in streams),
+            raw_probe_data=probe_data,
+        )
+
+    def _run_media_input(
+        self,
+        probe: MediaProbeResult,
+        *,
+        started_at: datetime,
+        output_root: Path,
+        device: Device,
+        output_format: OutputFormat,
+        progress_callback: PipelineProgressCallback | None,
+        input_summary_label: str,
+        input_stage: str,
+        input_message: str,
+        input_log_label: str,
+        prepare_input: InputPreparationCallback,
+        done_message: str,
+        failure_message: str,
+    ) -> FileSeparationResult:
+        """Prepare one supported media input and run separation/metadata writing."""
         job_result: JobResult | None = None
         actual_device = "unknown"
         try:
             _emit(progress_callback, "preparing", "Creating separation job.", 10)
             job_result = self.export_service.prepare_job(
                 probe.media_input,
-                output_root=output_root_path,
+                output_root=output_root,
                 device=device,
                 output_format=output_format,
             )
@@ -166,7 +292,7 @@ class FileSeparationPipeline:
             self._log(
                 job_result.log_path,
                 (
-                    "probe complete: "
+                    f"{input_summary_label}: "
                     f"kind={probe.media_input.kind}, "
                     f"duration={probe.media_input.duration_seconds}, "
                     f"sample_rate={probe.media_input.sample_rate}"
@@ -178,10 +304,10 @@ class FileSeparationPipeline:
             canonical_wav = (
                 job_result.job.output_dir / INTERMEDIATE_DIR_NAME / "input.wav"
             )
-            _emit(progress_callback, "extracting", "Extracting canonical WAV.", 25)
-            self._log(job_result.log_path, f"extract_audio start: {canonical_wav}")
-            self.media_service.extract_audio(probe.media_input.path, canonical_wav)
-            self._log(job_result.log_path, f"extract_audio complete: {canonical_wav}")
+            _emit(progress_callback, input_stage, input_message, 25)
+            self._log(job_result.log_path, f"{input_log_label} start: {canonical_wav}")
+            prepare_input(probe.media_input, canonical_wav)
+            self._log(job_result.log_path, f"{input_log_label} complete: {canonical_wav}")
 
             def separation_progress(stage: str) -> None:
                 self._log(job_result.log_path, f"separation stage: {stage}")
@@ -213,7 +339,7 @@ class FileSeparationPipeline:
                 status="success",
             )
             self._log(job_result.log_path, f"metadata written: {metadata_path}")
-            _emit(progress_callback, "done", "File separation complete.", 100)
+            _emit(progress_callback, "done", done_message, 100)
             return FileSeparationResult(
                 probe=probe,
                 job_result=job_result,
@@ -245,8 +371,8 @@ class FileSeparationPipeline:
                         job_result.log_path,
                         "failure metadata write failed: "
                         + _exception_text(metadata_exc),
-                    )
-                _emit(progress_callback, "failed", "File separation failed.", None)
+                )
+                _emit(progress_callback, "failed", failure_message, None)
                 raise FileSeparationPipelineError(
                     error_message,
                     stage="running",
@@ -254,7 +380,7 @@ class FileSeparationPipeline:
                     log_path=job_result.log_path,
                     metadata_path=job_result.metadata_path,
                 ) from exc
-            _emit(progress_callback, "failed", "File separation failed.", None)
+            _emit(progress_callback, "failed", failure_message, None)
             raise
 
     def record_probe_failure(

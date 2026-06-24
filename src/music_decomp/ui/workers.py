@@ -6,13 +6,16 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Literal
 
+from music_decomp.domain.media import MediaInput
 from music_decomp.services.file_pipeline import FileSeparationPipeline
+from music_decomp.services.recorder_service import RecorderService
 
 from .widgets import MissingPySide6Error, import_qt_core
 
 WorkerOperation = Callable[[], object]
+RecordingAction = Literal["placeholder", "list_devices", "start", "stop"]
 
 
 class WorkerState(str, Enum):
@@ -196,29 +199,56 @@ class MediaProbeWorker(BaseGuiWorker):
 
 
 class RecordingWorker(BaseGuiWorker):
-    """Shell worker for future recorder-service calls."""
+    """Worker for recorder-service device listing and lifecycle calls."""
 
     worker_type = "recording"
-    placeholder_message = "Recording workflow will be wired in Step 9."
+    placeholder_message = "Recording operation complete."
 
     def __init__(
         self,
         device_id: str | None = None,
         *,
+        action: RecordingAction = "placeholder",
+        recorder_service: object | None = None,
         operation: WorkerOperation | None = None,
         use_qt_signals: bool = True,
     ) -> None:
         super().__init__(
             operation=operation,
-            description="Preparing recording worker.",
+            description="Running recording operation.",
             use_qt_signals=use_qt_signals,
         )
         self.device_id = device_id
+        self.action = action
+        self.recorder_service = recorder_service
 
     def _run_operation(self) -> object:
         if self.operation is not None:
             return self.operation()
-        return {"device_id": self.device_id, "status": "recording-placeholder"}
+        if self.action == "placeholder":
+            return {"device_id": self.device_id, "status": "recording-placeholder"}
+
+        recorder_service = self.recorder_service or RecorderService()
+        if self.action == "list_devices":
+            return tuple(recorder_service.list_output_devices())  # type: ignore[attr-defined]
+        if self.action == "start":
+            return recorder_service.start_recording(self.device_id)  # type: ignore[attr-defined]
+        if self.action == "stop":
+            return recorder_service.stop_recording()  # type: ignore[attr-defined]
+        raise ValueError(f"Unsupported recording action: {self.action!r}")
+
+    def _success_message(self, result: object) -> str:
+        if self.action == "list_devices":
+            try:
+                count = len(result)  # type: ignore[arg-type]
+            except TypeError:
+                count = 0
+            return f"Recording devices ready: {count}"
+        if self.action == "start":
+            return f"Recording started: {result}"
+        if self.action == "stop" and isinstance(result, MediaInput):
+            return f"Recording finalized: {result.path}"
+        return self.placeholder_message
 
 
 class SeparationWorker(BaseGuiWorker):
@@ -231,6 +261,7 @@ class SeparationWorker(BaseGuiWorker):
         self,
         input_path: str | Path | None = None,
         *,
+        media_input: MediaInput | None = None,
         output_root: str | Path | None = None,
         output_format: str = "wav",
         device: str = "auto",
@@ -244,6 +275,7 @@ class SeparationWorker(BaseGuiWorker):
             use_qt_signals=use_qt_signals,
         )
         self.input_path = Path(input_path) if input_path is not None else None
+        self.media_input = media_input
         self.output_root = Path(output_root) if output_root is not None else None
         self.output_format = output_format
         self.device = device
@@ -252,9 +284,17 @@ class SeparationWorker(BaseGuiWorker):
     def _run_operation(self) -> object:
         if self.operation is not None:
             return self.operation()
+        pipeline = self.pipeline or FileSeparationPipeline()
+        if self.media_input is not None:
+            return pipeline.run_recording(  # type: ignore[attr-defined]
+                self.media_input,
+                output_root=self.output_root,
+                output_format=self.output_format,
+                device=self.device,
+                progress_callback=self._emit_pipeline_progress,
+            )
         if self.input_path is None:
             raise ValueError("No input file path was provided for separation.")
-        pipeline = self.pipeline or FileSeparationPipeline()
         return pipeline.run_file(  # type: ignore[attr-defined]
             self.input_path,
             output_root=self.output_root,
@@ -276,6 +316,10 @@ class SeparationWorker(BaseGuiWorker):
     def _success_message(self, result: object) -> str:
         output_dir = getattr(result, "output_dir", None)
         if output_dir is not None:
+            probe = getattr(result, "probe", None)
+            media_input = getattr(probe, "media_input", None)
+            if getattr(media_input, "kind", None) == "recording":
+                return f"Recording separation complete: {output_dir}"
             return f"File separation complete: {output_dir}"
         return self.placeholder_message
 

@@ -5,8 +5,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from music_decomp.domain.media import MediaInput
 from music_decomp.paths import project_root
 from music_decomp.services.file_pipeline import FileSeparationResult, MediaProbeResult
+from music_decomp.services.recorder_service import RecorderService, RecordingDevice
 
 from .widgets import (
     ControlSpec,
@@ -21,7 +23,13 @@ from .widgets import (
     populate_combo_box,
     selected_file_summary,
 )
-from .workers import MediaProbeWorker, SeparationWorker, WorkerOutcome, WorkerUpdate
+from .workers import (
+    MediaProbeWorker,
+    RecordingWorker,
+    SeparationWorker,
+    WorkerOutcome,
+    WorkerUpdate,
+)
 
 OUTPUT_FORMAT_OPTIONS = (
     OptionSpec("WAV", "wav"),
@@ -143,12 +151,15 @@ def _create_qt_main_window_class(qt: Any) -> type[Any]:
             super().__init__(parent)
             self.selected_file: Path | None = None
             self.selected_probe: MediaProbeResult | None = None
+            self.recorded_input: MediaInput | None = None
             self.current_output_folder: Path | None = None
             self.output_root = project_root() / "outputs"
+            self.recorder_service = RecorderService()
             self._active_workers: list[object] = []
             self._active_runnables: list[object] = []
             self._recording = False
-            self._record_elapsed_seconds = 0
+            self._recording_action_active = False
+            self._record_devices_loaded = False
 
             self.setWindowTitle("Music Decomp")
             self.resize(980, 640)
@@ -175,6 +186,7 @@ def _create_qt_main_window_class(qt: Any) -> type[Any]:
             self.tabs.addTab(self._build_record_tab(), "Record")
             self.tabs.addTab(self._build_jobs_tab(), "Jobs")
             self.tabs.addTab(self._build_settings_tab(), "Settings")
+            self.tabs.currentChanged.connect(self._handle_tab_changed)
 
         def _build_files_tab(self) -> object:
             tab = QtWidgets.QWidget()
@@ -243,7 +255,7 @@ def _create_qt_main_window_class(qt: Any) -> type[Any]:
             action_row = QtWidgets.QHBoxLayout()
             self.record_stop_button = QtWidgets.QPushButton("Record")
             self.record_stop_button.setObjectName("recordStopButton")
-            self.record_stop_button.clicked.connect(self._toggle_placeholder_recording)
+            self.record_stop_button.clicked.connect(self._toggle_recording)
             action_row.addWidget(self.record_stop_button)
 
             self.elapsed_time_label = QtWidgets.QLabel(format_elapsed(0))
@@ -266,7 +278,7 @@ def _create_qt_main_window_class(qt: Any) -> type[Any]:
             )
             self.send_recording_button.setObjectName("sendRecordingButton")
             self.send_recording_button.setEnabled(False)
-            self.send_recording_button.clicked.connect(self._send_recording_placeholder)
+            self.send_recording_button.clicked.connect(self._start_recording_separation)
             layout.addWidget(self.send_recording_button)
 
             self.record_status_label = create_status_label(qt, "Ready")
@@ -446,12 +458,15 @@ def _create_qt_main_window_class(qt: Any) -> type[Any]:
 
         def _handle_separation_finished(self, outcome: WorkerOutcome) -> None:
             self.start_separation_button.setEnabled(True)
+            self.send_recording_button.setEnabled(self.recorded_input is not None)
             self.job_status_label.setText("Complete")
             self.progress_label.setText(outcome.message)
             result = outcome.result
             if isinstance(result, FileSeparationResult):
                 self.current_output_folder = result.output_dir
                 self.jobs_list.addItem(f"Complete - {result.output_dir}")
+                if result.probe.media_input.kind == "recording":
+                    self.record_status_label.setText(f"Output folder: {result.output_dir}")
                 self.file_status_label.setText(
                     f"Output folder: {result.output_dir}. "
                     + HIGHEST_APPROXIMATE_NOTICE
@@ -462,48 +477,198 @@ def _create_qt_main_window_class(qt: Any) -> type[Any]:
 
         def _handle_separation_failed(self, message: str) -> None:
             self.start_separation_button.setEnabled(True)
+            self.send_recording_button.setEnabled(self.recorded_input is not None)
             self.job_status_label.setText("Failed")
             self.progress_label.setText("Failed")
             self._show_error(message)
 
+        def _handle_tab_changed(self, index: int) -> None:
+            if index == 1 and not self._record_devices_loaded:
+                self._refresh_recording_devices()
+
         def _refresh_recording_devices(self) -> None:
+            if self._recording_action_active:
+                return
+            if self.recorder_service.is_recording:
+                self._show_error("Stop recording before refreshing output devices.")
+                return
+            self._recording_action_active = True
+            self.refresh_devices_button.setEnabled(False)
+            self.record_status_label.setText("Refreshing output devices...")
+            self._clear_error()
+
+            worker = RecordingWorker(
+                action="list_devices",
+                recorder_service=self.recorder_service,
+                use_qt_signals=True,
+            )
+            worker.signals.finished.connect(self._handle_recording_devices_finished)
+            worker.signals.failed.connect(self._handle_recording_devices_failed)
+            worker.queue()
+
+            runnable = worker.as_qrunnable()
+            self._active_workers.append(worker)
+            self._active_runnables.append(runnable)
+            QtCore.QThreadPool.globalInstance().start(runnable)
+
+        def _handle_recording_devices_finished(self, outcome: WorkerOutcome) -> None:
+            self._recording_action_active = False
+            self.refresh_devices_button.setEnabled(True)
             self.output_device_combo.clear()
             self.output_device_combo.addItem("Default output device", "default")
-            self.record_status_label.setText("Device list ready for recorder wiring")
+            devices = (
+                tuple(outcome.result)
+                if isinstance(outcome.result, (list, tuple))
+                else ()
+            )
+            for device in devices:
+                device_id = str(getattr(device, "id", ""))
+                if not device_id:
+                    continue
+                self.output_device_combo.addItem(_recording_device_label(device), device_id)
+            self._record_devices_loaded = True
+            self.record_status_label.setText(f"Output devices ready: {len(devices)}")
             self._clear_error()
 
-        def _toggle_placeholder_recording(self) -> None:
-            if self._recording:
-                self._recording = False
+        def _handle_recording_devices_failed(self, message: str) -> None:
+            self._recording_action_active = False
+            self._record_devices_loaded = True
+            self.refresh_devices_button.setEnabled(True)
+            self.record_status_label.setText("Output device refresh failed")
+            self._show_error(message)
+
+        def _toggle_recording(self) -> None:
+            if self._recording_action_active:
+                return
+            if self.recorder_service.is_recording or self._recording:
+                self._stop_recording()
+                return
+            self._start_recording()
+
+        def _start_recording(self) -> None:
+            self._recording_action_active = True
+            self.recorded_input = None
+            self.send_recording_button.setEnabled(False)
+            self.record_stop_button.setEnabled(False)
+            self.refresh_devices_button.setEnabled(False)
+            self.elapsed_time_label.setText(format_elapsed(0))
+            self.level_meter.setValue(0)
+            self.record_status_label.setText("Starting recording...")
+            self._clear_error()
+
+            worker = RecordingWorker(
+                _selected_recording_device_id(self.output_device_combo),
+                action="start",
+                recorder_service=self.recorder_service,
+                use_qt_signals=True,
+            )
+            worker.signals.finished.connect(self._handle_recording_started)
+            worker.signals.failed.connect(self._handle_recording_failed)
+            worker.queue()
+
+            runnable = worker.as_qrunnable()
+            self._active_workers.append(worker)
+            self._active_runnables.append(runnable)
+            QtCore.QThreadPool.globalInstance().start(runnable)
+
+        def _handle_recording_started(self, outcome: WorkerOutcome) -> None:
+            self._recording_action_active = False
+            self._recording = True
+            self.record_stop_button.setText("Stop")
+            self.record_stop_button.setEnabled(True)
+            self.refresh_devices_button.setEnabled(False)
+            self.record_timer.start(250)
+            self.record_status_label.setText(outcome.message)
+            self._clear_error()
+
+        def _stop_recording(self) -> None:
+            self._recording_action_active = True
+            self.record_stop_button.setEnabled(False)
+            self.record_status_label.setText("Stopping recording...")
+            worker = RecordingWorker(
+                action="stop",
+                recorder_service=self.recorder_service,
+                use_qt_signals=True,
+            )
+            worker.signals.finished.connect(self._handle_recording_stopped)
+            worker.signals.failed.connect(self._handle_recording_failed)
+            worker.queue()
+
+            runnable = worker.as_qrunnable()
+            self._active_workers.append(worker)
+            self._active_runnables.append(runnable)
+            QtCore.QThreadPool.globalInstance().start(runnable)
+
+        def _handle_recording_stopped(self, outcome: WorkerOutcome) -> None:
+            self._recording_action_active = False
+            self._recording = False
+            self.record_timer.stop()
+            self.level_meter.setValue(0)
+            self.record_stop_button.setText("Record")
+            self.record_stop_button.setEnabled(True)
+            self.refresh_devices_button.setEnabled(True)
+            result = outcome.result
+            if isinstance(result, MediaInput):
+                self.recorded_input = result
+                self.elapsed_time_label.setText(format_elapsed(result.duration_seconds or 0))
+                self.send_recording_button.setEnabled(True)
+                self.record_status_label.setText(f"Recording ready: {result.path}")
+                self._clear_error()
+                return
+            self.send_recording_button.setEnabled(False)
+            self.record_status_label.setText(outcome.message)
+
+        def _handle_recording_failed(self, message: str) -> None:
+            self._recording_action_active = False
+            self._recording = self.recorder_service.is_recording
+            if not self._recording:
                 self.record_timer.stop()
                 self.level_meter.setValue(0)
-                self.record_stop_button.setText("Record")
-                self.record_status_label.setText("Stopped")
-                self.send_recording_button.setEnabled(True)
-                return
-
-            self._recording = True
-            self._record_elapsed_seconds = 0
-            self.elapsed_time_label.setText(format_elapsed(0))
-            self.level_meter.setValue(8)
-            self.send_recording_button.setEnabled(False)
-            self.record_stop_button.setText("Stop")
-            self.record_status_label.setText("Recording")
-            self.record_timer.start(1000)
-            self._clear_error()
+            self.record_stop_button.setText("Stop" if self._recording else "Record")
+            self.record_stop_button.setEnabled(True)
+            self.refresh_devices_button.setEnabled(not self._recording)
+            self.send_recording_button.setEnabled(self.recorded_input is not None)
+            self.record_status_label.setText("Recording failed")
+            self._show_error(message)
 
         def _tick_recording_timer(self) -> None:
-            self._record_elapsed_seconds += 1
-            self.elapsed_time_label.setText(format_elapsed(self._record_elapsed_seconds))
-            self.level_meter.setValue(18 + (self._record_elapsed_seconds % 5) * 8)
-
-        def _send_recording_placeholder(self) -> None:
-            self.tabs.setCurrentIndex(0)
-            self.file_status_label.setText(
-                "Recording handoff will use the Step 9 pipeline. "
-                + HIGHEST_APPROXIMATE_NOTICE
+            self.elapsed_time_label.setText(
+                format_elapsed(self.recorder_service.elapsed_seconds)
             )
+            self.level_meter.setValue(round(self.recorder_service.peak_level * 100))
+
+        def _start_recording_separation(self) -> None:
+            if self.recorded_input is None:
+                self._show_error("Record and stop audio before starting separation.")
+                return
+
+            output_format = combo_value(self.output_format_combo)
+            device = combo_value(self.device_combo)
+            self.output_root = self._current_output_root()
+            self.jobs_list.addItem(f"{self.recorded_input.path.name} - queued")
+            self.progress_label.setText("Queued")
+            self.job_status_label.setText("Preparing")
+            self.send_recording_button.setEnabled(False)
+            self.tabs.setCurrentIndex(2)
             self._clear_error()
+
+            worker = SeparationWorker(
+                media_input=self.recorded_input,
+                output_root=self.output_root,
+                output_format=output_format,
+                device=device,
+                use_qt_signals=True,
+            )
+            worker.signals.started.connect(self._handle_worker_started)
+            worker.signals.progress.connect(self._handle_worker_progress)
+            worker.signals.finished.connect(self._handle_worker_finished)
+            worker.signals.failed.connect(self._handle_separation_failed)
+            worker.queue()
+
+            runnable = worker.as_qrunnable()
+            self._active_workers.append(worker)
+            self._active_runnables.append(runnable)
+            QtCore.QThreadPool.globalInstance().start(runnable)
 
         def _choose_output_root(self) -> None:
             directory = QtWidgets.QFileDialog.getExistingDirectory(
@@ -557,3 +722,24 @@ def _format_duration(duration_seconds: float | None) -> str:
     if duration_seconds is None:
         return "unavailable"
     return f"{duration_seconds:.1f} s"
+
+
+def _recording_device_label(device: RecordingDevice | object) -> str:
+    name = str(getattr(device, "name", "") or "Output device")
+    channels = getattr(device, "channels", None)
+    is_default = bool(getattr(device, "is_default", False))
+    details: list[str] = []
+    if isinstance(channels, int) and channels > 0:
+        details.append(f"{channels} ch")
+    if is_default:
+        details.append("default")
+    if details:
+        return f"{name} ({', '.join(details)})"
+    return name
+
+
+def _selected_recording_device_id(combo_box: Any) -> str | None:
+    value = combo_value(combo_box)
+    if value in ("", "default", "default output device"):
+        return None
+    return value

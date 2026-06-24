@@ -7,6 +7,7 @@ from typing import Any
 
 import pytest
 
+from music_decomp.domain.media import MediaInput
 from music_decomp.services.export_service import ExportService
 from music_decomp.services.file_pipeline import (
     FileSeparationPipeline,
@@ -35,9 +36,11 @@ class FakeMediaService:
         probe_data: dict[str, Any] | None = None,
         *,
         probe_error: Exception | None = None,
+        extract_error: Exception | None = None,
     ) -> None:
         self.probe_data = probe_data or _load_fixture("ffprobe_audio.json")
         self.probe_error = probe_error
+        self.extract_error = extract_error
         self.probe_calls: list[Path] = []
         self.extract_calls: list[tuple[Path, Path]] = []
 
@@ -52,6 +55,8 @@ class FakeMediaService:
         source = Path(input_path)
         target = Path(output_wav)
         self.extract_calls.append((source, target))
+        if self.extract_error is not None:
+            raise self.extract_error
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(b"canonical wav")
         return target
@@ -214,6 +219,142 @@ def test_run_file_success_writes_log_metadata_and_outputs(tmp_path: Path) -> Non
         "metadata",
         "done",
     ]
+
+
+def test_run_recording_success_probes_and_extracts_canonical_wav(
+    tmp_path: Path,
+) -> None:
+    recording_path = tmp_path / "browser-take.wav"
+    recording_path.write_bytes(b"recorded wav")
+    media_service = FakeMediaService(
+        {
+            "streams": [
+                {
+                    "index": 0,
+                    "codec_type": "audio",
+                    "codec_name": "pcm_s16le",
+                    "sample_rate": "48000",
+                    "channels": 2,
+                }
+            ],
+            "format": {
+                "filename": str(recording_path),
+                "format_name": "wav",
+                "duration": "31.25",
+            },
+        }
+    )
+    separation_service = FakeSeparationService()
+    pipeline = FileSeparationPipeline(
+        media_service=media_service,
+        separation_service=separation_service,
+        export_service=ExportService(output_root=tmp_path / "default", clock=_fixed_time),
+        clock=_fixed_time,
+    )
+    progress: list[tuple[str, str, int | None]] = []
+
+    result = pipeline.run_recording(
+        MediaInput(
+            kind="recording",
+            path=recording_path,
+            title="Browser Take",
+            duration_seconds=31.25,
+            sample_rate=48_000,
+        ),
+        output_root=tmp_path / "outputs",
+        device="cpu",
+        output_format="flac",
+        progress_callback=lambda stage, message, percent: progress.append(
+            (stage, message, percent)
+        ),
+    )
+
+    assert result.output_dir == tmp_path / "outputs" / "20260614-080910-Browser Take"
+    canonical_wav = result.output_dir / "_intermediate" / "input.wav"
+    assert canonical_wav.read_bytes() == b"canonical wav"
+    assert result.probe.media_input.kind == "recording"
+    assert result.probe.stream_summary == ("audio #0, pcm_s16le, 48000 Hz, 2 ch",)
+    assert media_service.probe_calls == [recording_path]
+    assert media_service.extract_calls == [(recording_path, canonical_wav)]
+    assert separation_service.calls == [(result.output_dir, canonical_wav)]
+
+    metadata = json.loads(result.metadata_path.read_text(encoding="utf-8"))
+    assert metadata["status"] == "success"
+    assert metadata["input_kind"] == "recording"
+    assert metadata["input_title"] == "Browser Take"
+    assert metadata["input_duration_seconds"] == 31.25
+    assert metadata["input_sample_rate"] == 48_000
+    assert metadata["output_format"] == "flac"
+    log_text = result.log_path.read_text(encoding="utf-8")
+    assert "recording ready: kind=recording" in log_text
+    assert "recording_extract_audio complete" in log_text
+    assert [entry[0] for entry in progress] == [
+        "probing",
+        "preparing",
+        "extracting",
+        "separation.preparing",
+        "separation.loading_model",
+        "separation.separating",
+        "separation.exporting",
+        "separation.done",
+        "metadata",
+        "done",
+    ]
+
+
+def test_run_recording_requires_recording_media_kind(tmp_path: Path) -> None:
+    pipeline = FileSeparationPipeline(
+        media_service=FakeMediaService(_load_fixture("ffprobe_audio.json")),
+        separation_service=FakeSeparationService(),
+        export_service=ExportService(output_root=tmp_path, clock=_fixed_time),
+        clock=_fixed_time,
+    )
+
+    with pytest.raises(ValueError, match="kind='recording'"):
+        pipeline.run_recording(
+            MediaInput(kind="audio", path=tmp_path / "song.wav", title="song")
+        )
+
+
+def test_run_recording_missing_wav_writes_failure_metadata_and_log(
+    tmp_path: Path,
+) -> None:
+    pipeline = FileSeparationPipeline(
+        media_service=FakeMediaService(
+            _load_fixture("ffprobe_audio.json"),
+            extract_error=FileNotFoundError(
+                f"Recording WAV does not exist: {tmp_path / 'missing.wav'}"
+            ),
+        ),
+        separation_service=FakeSeparationService(),
+        export_service=ExportService(output_root=tmp_path / "default", clock=_fixed_time),
+        clock=_fixed_time,
+    )
+
+    with pytest.raises(FileSeparationPipelineError) as exc_info:
+        pipeline.run_recording(
+            MediaInput(
+                kind="recording",
+                path=tmp_path / "missing.wav",
+                title="Missing Take",
+                duration_seconds=4.0,
+                sample_rate=48_000,
+            ),
+            output_root=tmp_path / "outputs",
+        )
+
+    error = exc_info.value
+    assert error.stage == "running"
+    assert error.output_dir == tmp_path / "outputs" / "20260614-080910-Missing Take"
+    assert error.log_path is not None
+    assert error.metadata_path is not None
+    log_text = error.log_path.read_text(encoding="utf-8")
+    assert "recording_extract_audio start" in log_text
+    assert "Recording WAV does not exist" in log_text
+    metadata = json.loads(error.metadata_path.read_text(encoding="utf-8"))
+    assert metadata["status"] == "failure"
+    assert metadata["input_kind"] == "recording"
+    assert "Recording WAV does not exist" in metadata["error_message"]
 
 
 def test_run_file_same_second_collision_gets_unique_job_directories(

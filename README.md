@@ -10,8 +10,9 @@ other tools on the user machine.
 - Package name: `music-decomp`
 - Import package: `music_decomp`
 - Console script: `music-decomp`
-- Current implementation step: Step 8, local file separation pipeline
-- Latest tracked commit reviewed in docs: `f149209 Wire file separation pipeline`
+- Current implementation step: Step 9, recording separation pipeline
+- Latest committed baseline before this Step 9 change set:
+  `55cb0e8 Refresh project documentation status`
 
 Implemented so far:
 
@@ -24,10 +25,11 @@ Implemented so far:
 - System-audio recorder service with mocked test coverage.
 - PySide6 GUI shell with Files, Record, Jobs, and Settings tabs.
 - End-to-end local audio/video file pipeline wired into the GUI worker layer.
+- Recording-to-separation GUI flow wired through `RecorderService` and the
+  shared separation pipeline.
 
 Not complete yet:
 
-- Recording-to-separation GUI flow is still Step 9 work.
 - CLI workflows for `probe`, `separate`, and `list-recording-devices` are still
   Step 10 work.
 - Dependency lock files, asset manifests, Windows packaging, offline acceptance
