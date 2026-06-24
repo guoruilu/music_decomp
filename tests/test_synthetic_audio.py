@@ -15,10 +15,12 @@ from music_decomp.services.separation_service import (
     DemucsSeparatorBackend,
     HIGHEST_FILTER,
     LOWEST_FILTER,
+    MissingModelResourceError,
     SeparationError,
     SeparationDeviceError,
     SeparationService,
     clear_separator_cache,
+    resolve_packaged_model_repo,
 )
 
 
@@ -66,10 +68,12 @@ class FakeBackend:
         *,
         fail: bool = False,
         include_bass: bool = True,
+        model_repo: Path | None = None,
         calls: list[tuple[str, str]] | None = None,
     ) -> None:
         self.model_name = model_name
         self.device = device
+        self.model_repo = model_repo
         self.fail = fail
         self.include_bass = include_bass
         self.calls = calls
@@ -126,7 +130,11 @@ def test_success_progress_sequence_and_lowest_highest_derivation(
     progress: list[str] = []
     service = SeparationService(
         ffmpeg_path=tmp_path / "ffmpeg",
-        backend_factory=lambda model, device: FakeBackend(model, device),
+        backend_factory=lambda model, device, model_repo: FakeBackend(
+            model,
+            device,
+            model_repo=model_repo,
+        ),
         cuda_available=lambda: False,
     )
 
@@ -183,10 +191,11 @@ def test_lowest_falls_back_to_mixture_lowpass_when_bass_is_missing(
     mixture = _write_synthetic_mix(tmp_path / "mixture.wav")
     service = SeparationService(
         ffmpeg_path=tmp_path / "ffmpeg",
-        backend_factory=lambda model, device: FakeBackend(
+        backend_factory=lambda model, device, model_repo: FakeBackend(
             model,
             device,
             include_bass=False,
+            model_repo=model_repo,
         ),
         cuda_available=lambda: False,
     )
@@ -215,10 +224,11 @@ def test_missing_requested_bass_fails_instead_of_using_lowest_fallback(
     progress: list[str] = []
     service = SeparationService(
         ffmpeg_path=tmp_path / "ffmpeg",
-        backend_factory=lambda model, device: FakeBackend(
+        backend_factory=lambda model, device, model_repo: FakeBackend(
             model,
             device,
             include_bass=False,
+            model_repo=model_repo,
         ),
         cuda_available=lambda: False,
     )
@@ -251,7 +261,11 @@ def test_requested_non_wav_format_converts_raw_and_derived_outputs(
     mixture = _write_synthetic_mix(tmp_path / "mixture.wav")
     service = SeparationService(
         ffmpeg_path=tmp_path / "ffmpeg",
-        backend_factory=lambda model, device: FakeBackend(model, device),
+        backend_factory=lambda model, device, model_repo: FakeBackend(
+            model,
+            device,
+            model_repo=model_repo,
+        ),
         cuda_available=lambda: False,
     )
 
@@ -309,11 +323,16 @@ def test_auto_cuda_failure_retries_cpu_once(
         Path(args[-1]).write_bytes(b"filtered wav")
         return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
 
-    def backend_factory(model: str, device: str) -> FakeBackend:
+    def backend_factory(
+        model: str,
+        device: str,
+        model_repo: Path | None,
+    ) -> FakeBackend:
         return FakeBackend(
             model,
             device,
             fail=device == "cuda",
+            model_repo=model_repo,
             calls=calls,
         )
 
@@ -344,7 +363,12 @@ def test_failed_progress_is_reported(tmp_path: Path) -> None:
     progress: list[str] = []
     service = SeparationService(
         ffmpeg_path=tmp_path / "ffmpeg",
-        backend_factory=lambda model, device: FakeBackend(model, device, fail=True),
+        backend_factory=lambda model, device, model_repo: FakeBackend(
+            model,
+            device,
+            fail=True,
+            model_repo=model_repo,
+        ),
         cuda_available=lambda: False,
     )
 
@@ -354,17 +378,17 @@ def test_failed_progress_is_reported(tmp_path: Path) -> None:
     assert progress == ["preparing", "loading_model", "separating", "failed"]
 
 
-def test_demucs_backend_caches_separator_per_model_and_device(
+def test_demucs_backend_passes_bundled_model_repo_to_demucs(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    created: list[tuple[str, str]] = []
+    created: list[dict[str, object]] = []
 
     class FakeSeparator:
         samplerate = 44100
 
-        def __init__(self, *, model: str, device: str) -> None:
-            created.append((model, device))
+        def __init__(self, **kwargs: object) -> None:
+            created.append(dict(kwargs))
 
         def separate_audio_file(self, path: str):
             return None, {
@@ -383,14 +407,101 @@ def test_demucs_backend_caches_separator_per_model_and_device(
         lambda: (FakeSeparator, fake_save_audio),
     )
     clear_separator_cache()
+    model_repo = tmp_path / "models"
+    model_repo.mkdir()
 
-    first = DemucsSeparatorBackend("htdemucs", "cpu")
-    second = DemucsSeparatorBackend("htdemucs", "cpu")
+    first = DemucsSeparatorBackend("htdemucs", "cpu", model_repo=model_repo)
+    second = DemucsSeparatorBackend("htdemucs", "cpu", model_repo=model_repo)
     first.separate_to_wav(tmp_path / "mix.wav", tmp_path / "one")
     second.separate_to_wav(tmp_path / "mix.wav", tmp_path / "two")
 
-    assert created == [("htdemucs", "cpu")]
+    assert created == [
+        {
+            "model": "htdemucs",
+            "device": "cpu",
+            "repo": str(model_repo),
+        }
+    ]
     clear_separator_cache()
+
+
+def test_demucs_backend_cache_key_includes_model_repo(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    created: list[dict[str, object]] = []
+
+    class FakeSeparator:
+        samplerate = 44100
+
+        def __init__(self, **kwargs: object) -> None:
+            created.append(dict(kwargs))
+
+        def separate_audio_file(self, path: str):
+            return None, {
+                "vocals": object(),
+                "drums": object(),
+                "bass": object(),
+                "other": object(),
+            }
+
+    def fake_save_audio(source: object, path: str, *, samplerate: int) -> None:
+        Path(path).write_bytes(f"{samplerate}".encode("utf-8"))
+
+    monkeypatch.setattr(
+        separation_service,
+        "_load_demucs_api",
+        lambda: (FakeSeparator, fake_save_audio),
+    )
+    clear_separator_cache()
+    first_repo = tmp_path / "models-one"
+    second_repo = tmp_path / "models-two"
+    first_repo.mkdir()
+    second_repo.mkdir()
+
+    DemucsSeparatorBackend("htdemucs", "cpu", model_repo=first_repo).separate_to_wav(
+        tmp_path / "mix.wav",
+        tmp_path / "one",
+    )
+    DemucsSeparatorBackend("htdemucs", "cpu", model_repo=second_repo).separate_to_wav(
+        tmp_path / "mix.wav",
+        tmp_path / "two",
+    )
+
+    assert created == [
+        {"model": "htdemucs", "device": "cpu", "repo": str(first_repo)},
+        {"model": "htdemucs", "device": "cpu", "repo": str(second_repo)},
+    ]
+    clear_separator_cache()
+
+
+def test_source_mode_without_model_manifest_uses_demucs_default_repo(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(separation_service, "is_frozen", lambda: False)
+    monkeypatch.setattr(
+        separation_service,
+        "resource_path",
+        lambda relative: tmp_path / relative,
+    )
+
+    assert resolve_packaged_model_repo() is None
+
+
+def test_frozen_mode_without_model_manifest_fails_clearly(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(separation_service, "is_frozen", lambda: True)
+    monkeypatch.setattr(
+        separation_service,
+        "resource_path",
+        lambda relative: tmp_path / relative,
+    )
+
+    with pytest.raises(MissingModelResourceError, match="Packaged model manifest"):
+        resolve_packaged_model_repo()
 
 
 @pytest.mark.skipif(

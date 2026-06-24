@@ -12,6 +12,7 @@ from typing import Any, Literal, Protocol, cast
 
 from music_decomp.config import resolve_ffmpeg_path
 from music_decomp.domain.jobs import Device, JobResult
+from music_decomp.paths import is_frozen, resource_path
 from music_decomp.utils.subprocesses import run_command
 
 RAW_DEMUCS_STEMS = ("vocals", "drums", "bass", "other")
@@ -35,7 +36,7 @@ StemSource = Literal[
     "mixture_highpass_band",
 ]
 
-_SEPARATOR_CACHE: dict[tuple[str, str], Any] = {}
+_SEPARATOR_CACHE: dict[tuple[str, str, str | None], Any] = {}
 
 
 class SeparationError(RuntimeError):
@@ -50,6 +51,10 @@ class SeparationDeviceError(SeparationError):
     """Raised when the requested compute device cannot be used."""
 
 
+class MissingModelResourceError(SeparationError):
+    """Raised when packaged model resources are required but missing."""
+
+
 class SeparatorBackend(Protocol):
     """Backend interface used by SeparationService and tests."""
 
@@ -59,6 +64,9 @@ class SeparatorBackend(Protocol):
         output_dir: Path,
     ) -> Mapping[str, Path]:
         """Write raw Demucs stems as WAV files and return their paths."""
+
+
+BackendFactory = Callable[[str, str, Path | None], SeparatorBackend]
 
 
 @dataclass(frozen=True)
@@ -94,9 +102,15 @@ class SeparationRunResult:
 class DemucsSeparatorBackend:
     """Thin lazy wrapper around ``demucs.api.Separator``."""
 
-    def __init__(self, model_name: str, device: str) -> None:
+    def __init__(
+        self,
+        model_name: str,
+        device: str,
+        model_repo: str | Path | None = None,
+    ) -> None:
         self.model_name = model_name
         self.device = device
+        self.model_repo = Path(model_repo) if model_repo is not None else None
 
     def separate_to_wav(
         self,
@@ -104,7 +118,11 @@ class DemucsSeparatorBackend:
         output_dir: Path,
     ) -> Mapping[str, Path]:
         """Run Demucs and save the four raw model stems as WAV files."""
-        separator = _cached_demucs_separator(self.model_name, self.device)
+        separator = _cached_demucs_separator(
+            self.model_name,
+            self.device,
+            self.model_repo,
+        )
         _, save_audio = _load_demucs_api()
         output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -129,7 +147,7 @@ class SeparationService:
         self,
         *,
         ffmpeg_path: str | Path | None = None,
-        backend_factory: Callable[[str, str], SeparatorBackend] | None = None,
+        backend_factory: BackendFactory | None = None,
         cuda_available: Callable[[], bool] | None = None,
         logger: logging.Logger | None = None,
     ) -> None:
@@ -235,7 +253,11 @@ class SeparationService:
         progress: "_ProgressEmitter",
     ) -> Mapping[str, Path]:
         progress.emit("loading_model")
-        backend = self._backend_factory(model_name, device)
+        backend = self._backend_factory(
+            model_name,
+            device,
+            resolve_packaged_model_repo(),
+        )
         progress.emit("separating")
         return {
             stem: Path(path)
@@ -386,11 +408,34 @@ def clear_separator_cache() -> None:
     _SEPARATOR_CACHE.clear()
 
 
-def _cached_demucs_separator(model_name: str, device: str) -> Any:
-    key = (model_name, device)
+def resolve_packaged_model_repo() -> Path | None:
+    """Return the bundled model repository path, or None in source fallback mode."""
+    models_dir = resource_path("models")
+    manifest_path = models_dir / "manifest.json"
+    if manifest_path.is_file():
+        return models_dir
+    if is_frozen():
+        raise MissingModelResourceError(
+            "Packaged model manifest is missing. Expected bundled model assets at "
+            f"{manifest_path}."
+        )
+    return None
+
+
+def _cached_demucs_separator(
+    model_name: str,
+    device: str,
+    model_repo: str | Path | None = None,
+) -> Any:
+    repo_path = Path(model_repo) if model_repo is not None else None
+    repo_key = str(repo_path.resolve()) if repo_path is not None else None
+    key = (model_name, device, repo_key)
     if key not in _SEPARATOR_CACHE:
         separator_class, _save_audio = _load_demucs_api()
-        _SEPARATOR_CACHE[key] = separator_class(model=model_name, device=device)
+        kwargs: dict[str, object] = {"model": model_name, "device": device}
+        if repo_path is not None:
+            kwargs["repo"] = str(repo_path)
+        _SEPARATOR_CACHE[key] = separator_class(**kwargs)
     return _SEPARATOR_CACHE[key]
 
 

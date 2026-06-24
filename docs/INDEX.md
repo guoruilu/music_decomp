@@ -18,6 +18,7 @@
 - [Recording separation pipeline](by-feature/recording-separation-pipeline.md)
 - [CLI workflows](by-feature/cli-workflows.md)
 - [Dependency and asset manifest](by-feature/dependency-and-asset-manifest.md)
+- [Windows packaging](by-feature/windows-packaging.md)
 
 ## By Date
 
@@ -38,6 +39,7 @@
 - [2026-06-24 Step 9 recording separation](by-date/2026-06-24-step-9-recording-separation.md)
 - [2026-06-24 Step 10 CLI workflows](by-date/2026-06-24-step-10-cli-workflows.md)
 - [2026-06-24 Step 11 dependency and asset manifest](by-date/2026-06-24-step-11-dependency-and-asset-manifest.md)
+- [2026-06-24 Step 12 Windows packaging](by-date/2026-06-24-step-12-windows-packaging.md)
 
 ## Requirement Records
 

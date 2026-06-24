@@ -10,9 +10,9 @@ other tools on the user machine.
 - Package name: `music-decomp`
 - Import package: `music_decomp`
 - Console script: `music-decomp`
-- Current implementation step: Step 11, dependency and asset manifest
-- Latest committed baseline before this Step 11 change set:
-  `9dcc73c Add CLI workflows`
+- Current implementation step: Step 12, Windows PyInstaller packaging
+- Latest committed baseline before this Step 12 change set:
+  `6ac49b7 Document dependency and asset manifest`
 
 Implemented so far:
 
@@ -32,11 +32,13 @@ Implemented so far:
   errors.
 - Dependency input files and asset manifest scaffolding for future Windows
   CPU/CUDA locks, FFmpeg staging, and Demucs model checksum tracking.
+- Windows PyInstaller packaging scripts, one-folder spec, portable verifier,
+  and packaged model-resource resolution.
 
 Not complete yet:
 
-- Real Windows dependency locks, Windows packaging, offline acceptance testing,
-  and user documentation are still pending.
+- Real Windows dependency locks, a built `dist/MusicDecomp/` package, offline
+  acceptance testing, and user documentation are still pending.
 - Real Windows manual acceptance with bundled/configured FFmpeg, Demucs, model
   files, and WASAPI loopback has not been completed.
 
@@ -65,6 +67,18 @@ Optional feature extras are declared in `pyproject.toml`:
 Step 11 also adds `requirements/base.in` as the direct dependency input for
 future Windows lock generation. The CPU/CUDA lock files are placeholders until
 they are generated and validated on a Windows x64 Python 3.11 build machine.
+
+Step 12 adds packaging entry points:
+
+```bash
+python3 scripts/verify_portable_package.py --help
+```
+
+The real package build must run on Windows:
+
+```powershell
+.\packaging\windows\build.ps1 -Profile cpu
+```
 
 ## Documentation
 

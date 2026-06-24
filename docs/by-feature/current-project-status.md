@@ -10,11 +10,10 @@ next implementation task starts. The detailed source of truth remains
 
 - Remote: `git@github.com:guoruilu/music_decomp.git`
 - Branch: `main`
-- Latest committed baseline before this Step 11 change set:
-  `9dcc73c Add CLI workflows`
-- Current completed execution step: Step 11 - Add Dependency Locks And Asset
-  Manifests
-- Next planned execution step: Step 12 - Package With PyInstaller
+- Latest committed baseline before this Step 12 change set:
+  `6ac49b7 Document dependency and asset manifest`
+- Current completed execution step: Step 12 - Package With PyInstaller
+- Next planned execution step: Step 13 - Offline Acceptance Test
 
 ## Required Workflow
 
@@ -57,7 +56,8 @@ The following planned steps have tracked commits:
 | Documentation refresh | `55cb0e8` | Complete |
 | Step 9 recording separation pipeline | `76becab` | Complete |
 | Step 10 CLI workflows | `9dcc73c` | Complete |
-| Step 11 dependency and asset manifest | This change set | Complete |
+| Step 11 dependency and asset manifest | `6ac49b7` | Complete |
+| Step 12 Windows packaging | This change set | Complete |
 
 ## Current Implementation Capabilities
 
@@ -98,10 +98,21 @@ The following planned steps have tracked commits:
   FFmpeg, and Demucs model provenance fields.
 - `vendor/README.md` documents expected FFmpeg staging layout; `.gitignore`
   keeps all other vendor assets ignored.
+- `packaging/pyinstaller/music_decomp.spec` defines a PyInstaller one-folder
+  package for `dist/MusicDecomp/`.
+- `packaging/windows/build.ps1` runs Windows package prerequisites,
+  dependency install, tests, PyInstaller, metadata/license copy, and smoke
+  verification.
+- `packaging/windows/smoke-test.ps1` runs package verification and optional GUI
+  launch smoke with isolated runtime environment.
+- `scripts/verify_portable_package.py` verifies package structure, bundled
+  FFmpeg/FFprobe, model manifest, dependency manifest, license files, no source
+  `.venv` references, version smoke, and bundled FFprobe probe smoke.
+- Packaged separation resolves `resource_path("models")` and passes the bundled
+  model repository to Demucs when `models/manifest.json` is present.
 
 ## Remaining Planned Work
 
-- Step 12: PyInstaller one-folder Windows packaging.
 - Step 13: clean Windows offline acceptance test.
 - Step 14: user guide and troubleshooting documentation.
 
@@ -111,12 +122,13 @@ The following planned steps have tracked commits:
   logs. It still needs bundled or configured FFmpeg, Demucs, model files, and
   actual short audio/video inputs.
 - Real Windows WASAPI loopback recording has not been manually validated.
-- `packaging/`, `scripts/`, and `models/` are not present yet because their
-  planned steps have not started.
+- `models/` is not present yet because model assets have not been staged.
 - Real Windows CPU/CUDA dependency locks have not been generated; the current
   files are placeholders by design.
 - FFmpeg binaries and model weights are not staged, and their checksum fields
   remain pending in the manifest.
+- Real Windows PyInstaller build has not been run in this environment.
+- `dist/MusicDecomp/` has not been produced or launched on Windows.
 - Real Windows WASAPI loopback recording and separation has not been manually
   accepted; Step 9 tests are fake-based in this Linux/no-heavy-deps environment.
 - Real CLI `probe`/`separate` integration with actual FFmpeg, Demucs, and model
@@ -125,7 +137,7 @@ The following planned steps have tracked commits:
   regular success `job.json` metadata does not yet persist per-stem
   approximation details.
 - Full test execution requires local development dependencies. In the
-  2026-06-24 documentation refresh and Step 9/10/11 executor environments,
+  2026-06-24 documentation refresh and Step 9/10/11/12 executor environments,
   `pytest` was not installed.
 - Step 9 real Windows WASAPI loopback acceptance remains pending until a
   Windows machine with browser playback, FFmpeg, Demucs, and model files is
