@@ -10,10 +10,13 @@ next implementation task starts. The detailed source of truth remains
 
 - Remote: `git@github.com:guoruilu/music_decomp.git`
 - Branch: `main`
-- Latest committed baseline before this Step 12 change set:
-  `6ac49b7 Document dependency and asset manifest`
+- Latest committed baseline:
+  `1976823 Add Windows packaging`
 - Current completed execution step: Step 12 - Package With PyInstaller
-- Next planned execution step: Step 13 - Offline Acceptance Test
+- Step 13 preflight status: blocked in the current Linux environment; no real
+  Windows offline acceptance was run.
+- Next planned execution step: Step 13 - Offline Acceptance Test remains pending
+  on Windows x64.
 
 ## Required Workflow
 
@@ -57,7 +60,7 @@ The following planned steps have tracked commits:
 | Step 9 recording separation pipeline | `76becab` | Complete |
 | Step 10 CLI workflows | `9dcc73c` | Complete |
 | Step 11 dependency and asset manifest | `6ac49b7` | Complete |
-| Step 12 Windows packaging | This change set | Complete |
+| Step 12 Windows packaging | `1976823` | Complete |
 
 ## Current Implementation Capabilities
 
@@ -111,9 +114,22 @@ The following planned steps have tracked commits:
 - Packaged separation resolves `resource_path("models")` and passes the bundled
   model repository to Demucs when `models/manifest.json` is present.
 
+## Step 13 Preflight Notes
+
+The 2026-06-24 Step 13 executor pass could only perform non-destructive
+preflight checks. It did not create or run a package. The current environment is
+Linux WSL2 x86_64, `dist/MusicDecomp/` is missing, `vendor/ffmpeg/bin/` is
+missing, `models/` is missing, and both Windows lock files are still explicit
+placeholders. `python3 scripts/verify_portable_package.py --package-dir
+dist/MusicDecomp --structure-only` fails because the package directory does not
+exist.
+
+Step 13 must still be run on Windows x64 from a clean copied package with
+network disabled and without Python or system FFmpeg on PATH.
+
 ## Remaining Planned Work
 
-- Step 13: clean Windows offline acceptance test.
+- Step 13: clean Windows offline acceptance test on a real packaged build.
 - Step 14: user guide and troubleshooting documentation.
 
 ## Known Gaps And Risks
@@ -142,6 +158,8 @@ The following planned steps have tracked commits:
 - Step 9 real Windows WASAPI loopback acceptance remains pending until a
   Windows machine with browser playback, FFmpeg, Demucs, and model files is
   available.
+- Step 13 was not run in the 2026-06-24 Linux executor pass; the result is
+  blocked/preflight only and must not be treated as an acceptance pass.
 
 ## Documentation Maintenance Notes
 

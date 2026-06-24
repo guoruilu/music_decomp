@@ -19,6 +19,7 @@
 - [CLI workflows](by-feature/cli-workflows.md)
 - [Dependency and asset manifest](by-feature/dependency-and-asset-manifest.md)
 - [Windows packaging](by-feature/windows-packaging.md)
+- [Offline acceptance test](by-feature/offline-acceptance-test.md)
 
 ## By Date
 
@@ -39,3 +40,4 @@
 - [2026-06-24 Step 10 CLI workflows](by-date/2026-06-24-step-10-cli-workflows.md)
 - [2026-06-24 Step 11 dependency and asset manifest](by-date/2026-06-24-step-11-dependency-and-asset-manifest.md)
 - [2026-06-24 Step 12 Windows packaging](by-date/2026-06-24-step-12-windows-packaging.md)
+- [2026-06-24 Step 13 offline acceptance](by-date/2026-06-24-step-13-offline-acceptance.md)
